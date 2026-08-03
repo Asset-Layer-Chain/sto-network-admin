@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { adjustStoc } from '../api/adminTransactionApi.js';
 import { createIdempotencyKey } from '../api/rpcClient.js';
-import { formatNumber } from '../utils/format.js';
+import {
+  STOC_MAX_AMOUNT,
+  calculateStocBalance,
+  formatDecimal,
+  formatScaledDecimal,
+  isValidStocAmount,
+} from '../utils/decimal.js';
 import { Button, Input, Modal, Textarea } from './Common.jsx';
 import { useToast } from './Toast.jsx';
 
@@ -12,6 +19,7 @@ const ACTIONS = {
 };
 
 export function AssetAdjustmentModal({ open, member, action, onClose, onCompleted }) {
+  const { admin } = useAuth();
   const config = ACTIONS[action] || ACTIONS.deposit;
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
@@ -28,20 +36,36 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
     setIdempotencyKey(createIdempotencyKey(`admin-${action}`));
   }, [open, action]);
 
-  const currentBalance = Number(member?.internalStocBalance ?? member?.internal_stoc_balance ?? 0);
-  const numericAmount = Number(amount || 0);
-  const expected = useMemo(() => currentBalance + (config.sign * numericAmount), [currentBalance, numericAmount, config.sign]);
+  const currentBalance = String(member?.internalStocBalance ?? member?.internal_stoc_balance ?? '0');
+  const expectedScaled = useMemo(
+    () => calculateStocBalance(currentBalance, amount || '0', config.sign),
+    [currentBalance, amount, config.sign],
+  );
+  const expectedIsNegative = expectedScaled !== null && expectedScaled < 0n;
+  const memberStatus = String(member?.status || '');
+  const requiresStatusWarning = memberStatus === 'pending' || memberStatus === 'suspended';
 
   const submit = async () => {
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      setError('금액은 0보다 커야 합니다.');
+    const permissionKey = {
+      deposit: 'assetDeposit',
+      withdrawal: 'assetWithdrawal',
+      airdrop: 'assetAirdrop',
+    }[action];
+    if (!permissionKey || !admin?.permissions?.[permissionKey]) {
+      setError('현재 관리자 등급으로는 이 자산 작업을 수행할 수 없습니다.');
+      return;
+    }
+
+    const normalizedAmount = amount.trim();
+    if (!isValidStocAmount(normalizedAmount)) {
+      setError(`금액은 0보다 크고, 정수 15자리·소수점 8자리 이내여야 합니다. 최대 ${STOC_MAX_AMOUNT} STOC`);
       return;
     }
     if (reason.trim().length < 2) {
       setError('처리 사유를 2자 이상 입력해주세요.');
       return;
     }
-    if (action === 'withdrawal' && expected < 0) {
+    if (action === 'withdrawal' && expectedIsNegative) {
       setError('보유 잔액보다 많이 차감할 수 없습니다.');
       return;
     }
@@ -52,11 +76,11 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
       const result = await adjustStoc({
         userId: member.user_id || member.userId,
         action,
-        amount: numericAmount,
+        amount: normalizedAmount,
         reason,
         idempotencyKey,
       });
-      showToast(`${formatNumber(numericAmount)} STOC ${config.submit.replace(' 확정', '')} 처리되었습니다.`);
+      showToast(`${formatDecimal(normalizedAmount)} STOC ${config.submit.replace(' 확정', '')} 처리되었습니다.`);
       onCompleted?.(result);
       onClose?.();
     } catch (requestError) {
@@ -71,14 +95,16 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
       open={open}
       title={config.title}
       onClose={submitting ? undefined : onClose}
-      footer={<><Button variant="secondary" onClick={onClose} disabled={submitting}>취소</Button><Button variant={action === 'withdrawal' ? 'danger' : 'primary'} onClick={submit} disabled={submitting}>{submitting ? '처리 중' : `${formatNumber(numericAmount)} STOC ${config.submit}`}</Button></>}
+      footer={<><Button variant="secondary" onClick={onClose} disabled={submitting}>취소</Button><Button variant={action === 'withdrawal' ? 'danger' : 'primary'} onClick={submit} disabled={submitting}>{submitting ? '처리 중' : `${formatDecimal(amount || '0')} STOC ${config.submit}`}</Button></>}
     >
       <div className="summary-box">
         <div><span>대상 회원</span><strong>{member?.mb_name || member?.name} ({member?.mb_id || member?.memberId})</strong></div>
-        <div><span>현재 잔액</span><strong>{formatNumber(currentBalance)} STOC</strong></div>
-        <div><span>처리 후 예상</span><strong className={expected < 0 ? 'text-danger' : ''}>{formatNumber(expected)} STOC</strong></div>
+        <div><span>회원 상태</span><strong>{memberStatus || '-'}</strong></div>
+        <div><span>현재 잔액</span><strong>{formatDecimal(currentBalance)} STOC</strong></div>
+        <div><span>처리 후 예상</span><strong className={expectedIsNegative ? 'text-danger' : ''}>{expectedScaled === null ? '-' : `${formatScaledDecimal(expectedScaled)} STOC`}</strong></div>
       </div>
-      <Input label="금액" type="number" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+      {requiresStatusWarning ? <div className="notice notice-warning">현재 {memberStatus} 상태인 회원입니다. 상태를 확인한 뒤 처리해주세요.</div> : null}
+      <Input label="금액" type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00000000" autoComplete="off" />
       <Textarea label="처리 사유" rows="4" maxLength="300" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="감사 로그와 거래 메타데이터에 저장됩니다." />
       {error ? <p className="form-error">{error}</p> : null}
     </Modal>

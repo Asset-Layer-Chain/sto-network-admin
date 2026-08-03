@@ -34,6 +34,8 @@ small { color: var(--muted); }
 .sidebar-nav button.active { background: #374151; color: white; font-weight: 700; }
 .sidebar-user { margin-top: auto; border-top: 1px solid #374151; padding: 18px 8px 0; }
 .sidebar-user > div { display: flex; gap: 8px; align-items: center; }
+.sidebar-user .sidebar-grade { margin-top: 8px; flex-wrap: wrap; }
+.sidebar-user .sidebar-grade > span { color: #9ca3af; font-size: 12px; }
 .sidebar-user small { display: block; margin: 6px 0 12px; word-break: break-all; }
 .sidebar-user .button { width: 100%; color: #d1d5db; border-color: #4b5563; }
 .main-content { min-width: 0; padding: 32px; }
@@ -192,6 +194,7 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
 .login-visual p { color: #cbd5e1; }
 .notice { border-radius: 8px; padding: 11px 13px; margin-bottom: 16px; font-size: 13px; }
 .notice-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.notice-warning { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
 .center-page { min-height: 100vh; display: grid; place-items: center; padding: 40px; }
 .center-card { width: 100%; max-width: 520px; padding: 44px; background: white; border: 1px solid var(--border); border-radius: 14px; text-align: center; }
 .center-card .brand-mark { margin-bottom: 18px; }

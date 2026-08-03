@@ -31,7 +31,7 @@ export function LoginPage() {
     <div className="login-page">
       <div className="login-panel">
         <div className="login-brand"><span className="brand-mark">S</span><div><strong>STO Network</strong><small>Product Admin</small></div></div>
-        <div className="login-copy"><h1>관리자 로그인</h1><p>승인된 admin 또는 super_admin 계정만 접근할 수 있습니다.</p></div>
+        <div className="login-copy"><h1>관리자 로그인</h1><p>승인된 관리자 계정만 접근할 수 있으며 자산 기능은 등급별로 제한됩니다.</p></div>
         {!configured ? <div className="notice notice-danger">`.env.local`에 Supabase 환경변수를 설정해주세요.</div> : null}
         <form onSubmit={submit} className="login-form">
           <Input label="이메일" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />

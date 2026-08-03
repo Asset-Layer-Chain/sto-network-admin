@@ -112,8 +112,8 @@ as $$
       'senderAddress', t.sender_address,
       'receiverAddress', t.receiver_address,
       'assetCode', t.asset_code,
-      'amount', t.amount,
-      'feeAmount', t.fee_amount,
+      'amount', t.amount::text,
+      'feeAmount', t.fee_amount::text,
       'transactionType', t.transaction_type,
       'status', t.status,
       'description', t.description,
@@ -442,7 +442,11 @@ begin
      offset v_offset
      limit v_page_size
   )
-  select coalesce(jsonb_agg(to_jsonb(page_data)), '[]'::jsonb)
+  select coalesce(jsonb_agg(
+           to_jsonb(page_data) || jsonb_build_object(
+             'internal_stoc_balance', page_data.internal_stoc_balance::text
+           )
+         ), '[]'::jsonb)
     into v_items
     from page_data;
 
@@ -549,7 +553,12 @@ begin
      and wa.account_type = 'internal';
   v_internal_balance := coalesce(v_internal_balance, 0::numeric);
 
-  select coalesce(jsonb_agg(to_jsonb(wa) order by wa.asset_code, wa.account_type), '[]'::jsonb)
+  select coalesce(jsonb_agg(
+           to_jsonb(wa) || jsonb_build_object(
+             'available_balance', wa.available_balance::text,
+             'locked_balance', wa.locked_balance::text
+           ) order by wa.asset_code, wa.account_type
+         ), '[]'::jsonb)
     into v_wallet_accounts
     from public.wallet_accounts wa
    where wa.user_id = p_user_id;
@@ -605,7 +614,7 @@ begin
 
   return jsonb_build_object(
     'member', to_jsonb(v_member),
-    'internalStocBalance', v_internal_balance,
+    'internalStocBalance', v_internal_balance::text,
     'walletAccounts', coalesce(v_wallet_accounts, '[]'::jsonb),
     'walletAddresses', coalesce(v_wallet_addresses, '[]'::jsonb),
     'devices', coalesce(v_devices, '[]'::jsonb),
@@ -655,6 +664,12 @@ begin
   if p_amount is null or p_amount <= 0 then
     raise exception using errcode = 'P0001', message = 'INVALID_AMOUNT';
   end if;
+  if p_amount <> round(p_amount, 8) then
+    raise exception using errcode = 'P0001', message = 'INVALID_AMOUNT_SCALE';
+  end if;
+  if p_amount > 999999999999999.99999999::numeric then
+    raise exception using errcode = 'P0001', message = 'ADMIN_AMOUNT_LIMIT_EXCEEDED';
+  end if;
   if char_length(v_reason) < 2 then
     raise exception using errcode = 'P0001', message = 'ADMIN_REASON_REQUIRED';
   end if;
@@ -679,9 +694,9 @@ begin
     return jsonb_build_object(
       'alreadyProcessed', true,
       'action', v_action,
-      'amount', p_amount,
-      'balanceBefore', coalesce((v_existing.metadata ->> 'balance_before')::numeric, 0),
-      'balanceAfter', coalesce((v_existing.metadata ->> 'balance_after')::numeric, 0),
+      'amount', p_amount::text,
+      'balanceBefore', coalesce(v_existing.metadata ->> 'balance_before', '0'),
+      'balanceAfter', coalesce(v_existing.metadata ->> 'balance_after', '0'),
       'transaction', private.admin_transaction_payload(v_existing.id)
     );
   end if;
@@ -777,9 +792,9 @@ begin
   return jsonb_build_object(
     'alreadyProcessed', false,
     'action', v_action,
-    'amount', p_amount,
-    'balanceBefore', v_balance_before,
-    'balanceAfter', v_balance_after,
+    'amount', p_amount::text,
+    'balanceBefore', v_balance_before::text,
+    'balanceAfter', v_balance_after::text,
     'adminLogId', v_log_id,
     'transaction', private.admin_transaction_payload(v_transaction_id)
   );
@@ -1013,11 +1028,6 @@ begin
     from public.member m
    where m.user_id = any(v_member_ids);
 
-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, before_data, after_data, metadata)
-  values (v_admin.user_id, 'chat.room_create', v_room_id, '{}'::jsonb,
-          private.admin_chat_room_payload(v_room_id, v_admin.user_id),
-          jsonb_build_object('memberIds', to_jsonb(v_member_ids)));
-
   return private.admin_chat_room_payload(v_room_id, v_admin.user_id);
 end;
 $$;
@@ -1032,7 +1042,6 @@ as $$
 declare
   v_admin public.member%rowtype;
   v_title text := trim(coalesce(p_title, ''));
-  v_before jsonb;
   v_after jsonb;
 begin
   v_admin := private.require_admin();
@@ -1040,8 +1049,10 @@ begin
     raise exception using errcode = 'P0001', message = 'CHAT_ROOM_TITLE_REQUIRED';
   end if;
   v_title := left(v_title, 80);
-  v_before := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
-  if v_before is null or v_before = 'null'::jsonb then
+  if not exists (
+    select 1 from public.chat_rooms cr
+     where cr.id = p_room_id and cr.room_type = 'group'
+  ) then
     raise exception using errcode = 'P0001', message = 'CHAT_ROOM_NOT_FOUND';
   end if;
 
@@ -1052,8 +1063,6 @@ begin
      and cr.room_type = 'group';
 
   v_after := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, before_data, after_data)
-  values (v_admin.user_id, 'chat.room_update', p_room_id, v_before, v_after);
   return v_after;
 end;
 $$;
@@ -1072,7 +1081,6 @@ declare
   v_valid_count integer;
   v_current_count integer;
   v_new_count integer;
-  v_before jsonb;
   v_after jsonb;
 begin
   v_admin := private.require_admin();
@@ -1113,8 +1121,6 @@ begin
     raise exception using errcode = 'P0001', message = 'CHAT_ROOM_MEMBER_LIMIT_EXCEEDED';
   end if;
 
-  v_before := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
-
   insert into public.chat_members(room_id, user_id, role, last_read_message_id, unread_count, joined_at, left_at)
   select p_room_id, m.user_id,
          case when m.role in ('admin', 'super_admin') then 'admin' else 'member' end,
@@ -1135,9 +1141,6 @@ begin
     left_at = null;
 
   v_after := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, before_data, after_data, metadata)
-  values (v_admin.user_id, 'chat.member_add', p_room_id, v_before, v_after,
-          jsonb_build_object('memberIds', to_jsonb(v_member_ids), 'addedOrReactivatedCount', v_new_count));
   return v_after;
 end;
 $$;
@@ -1160,7 +1163,6 @@ declare
   v_active_remove_count integer;
   v_current_count integer;
   v_remaining_admin_count integer;
-  v_before jsonb;
   v_after jsonb;
 begin
   v_admin := private.require_admin();
@@ -1199,7 +1201,6 @@ begin
     raise exception using errcode = 'P0001', message = 'CHAT_LAST_ADMIN_REQUIRED';
   end if;
 
-  v_before := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
   update public.chat_members cm
      set left_at = now(), unread_count = 0
    where cm.room_id = p_room_id
@@ -1207,9 +1208,6 @@ begin
      and cm.left_at is null;
 
   v_after := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, reason, before_data, after_data, metadata)
-  values (v_admin.user_id, 'chat.member_remove', p_room_id, nullif(trim(coalesce(p_reason, '')), ''),
-          v_before, v_after, jsonb_build_object('memberIds', to_jsonb(v_member_ids), 'removedCount', v_active_remove_count));
   return v_after;
 end;
 $$;
@@ -1257,8 +1255,6 @@ begin
     role = 'admin', last_read_message_id = excluded.last_read_message_id,
     unread_count = 0, joined_at = now(), left_at = null;
 
-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, metadata)
-  values (v_admin.user_id, 'chat.admin_join', p_room_id, jsonb_build_object('memberId', v_admin.mb_id));
   return private.admin_chat_room_payload(p_room_id, v_admin.user_id);
 end;
 $$;

@@ -38,13 +38,20 @@ export function Badge({ children, tone = 'neutral' }) {
 }
 
 export function StatusBadge({ value }) {
+  const key = String(value || '');
   const tone = {
     active: 'success', completed: 'success', admin: 'info', super_admin: 'purple',
     pending: 'warning', processing: 'info', suspended: 'danger', deleted: 'danger',
     failed: 'danger', cancelled: 'neutral', user: 'neutral',
     deposit: 'success', airdrop: 'purple', withdrawal: 'danger',
-  }[String(value)] || 'neutral';
-  return <Badge tone={tone}>{value || '-'}</Badge>;
+    team_lead: 'info', center_director: 'purple', headquarters: 'success',
+  }[key] || 'neutral';
+  const label = {
+    team_lead: '팀장급',
+    center_director: '센터장',
+    headquarters: '본부',
+  }[key] || value || '-';
+  return <Badge tone={tone}>{label}</Badge>;
 }
 
 export function Loading({ label = '불러오는 중입니다.' }) {

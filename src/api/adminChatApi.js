@@ -1,6 +1,23 @@
 import { callRpc } from './rpcClient.js';
 import { getSupabaseClient } from './supabaseClient.js';
 
+function normalizeChatMessage(message) {
+  if (!message) return null;
+  return {
+    id: message.id,
+    roomId: message.roomId ?? message.room_id,
+    senderId: message.senderId ?? message.sender_id,
+    senderName: message.senderName ?? message.sender_name,
+    senderMemberId: message.senderMemberId ?? message.sender_member_id,
+    senderAvatar: message.senderAvatar ?? message.sender_avatar,
+    senderRole: message.senderRole ?? message.sender_role,
+    clientMessageId: message.clientMessageId ?? message.client_message_id,
+    content: message.content,
+    deletedAt: message.deletedAt ?? message.deleted_at,
+    createdAt: message.createdAt ?? message.created_at,
+  };
+}
+
 export async function listChatRooms(filters = {}) {
   const result = await callRpc('rpc_admin_list_chat_rooms', {
     p_search: filters.search || null,
@@ -58,18 +75,31 @@ export async function getChatMessages({ roomId, beforeMessageId = null, limit = 
     p_before_message_id: beforeMessageId,
     p_limit: limit,
   });
-  return Array.isArray(result) ? result : [];
+  return Array.isArray(result) ? result.map(normalizeChatMessage).filter(Boolean) : [];
 }
 
-export function getChatMessage(messageId) {
-  return callRpc('rpc_admin_get_chat_message', { p_message_id: messageId });
+export async function getChatMessage(messageId) {
+  return normalizeChatMessage(await callRpc('rpc_admin_get_chat_message', { p_message_id: messageId }));
 }
 
-export function sendChatMessage({ roomId, content, clientMessageId = null }) {
-  return callRpc('rpc_send_chat_message', {
+export async function sendChatMessage({ roomId, content, clientMessageId = null }) {
+  const message = normalizeChatMessage(await callRpc('rpc_send_chat_message', {
     p_room_id: roomId,
     p_client_message_id: clientMessageId || globalThis.crypto?.randomUUID?.(),
     p_content: content,
+  }));
+  if (!message?.id || message.senderRole) return message;
+  try {
+    return await getChatMessage(message.id);
+  } catch {
+    return message;
+  }
+}
+
+export function markChatRoomRead(roomId, lastMessageId = null) {
+  return callRpc('rpc_mark_chat_room_read', {
+    p_room_id: roomId,
+    p_last_message_id: lastMessageId,
   });
 }
 
@@ -87,7 +117,8 @@ export function subscribeToChatMessages(roomId, onMessage, onStatus) {
         const message = await getChatMessage(payload?.new?.id);
         if (message) onMessage?.(message);
       } catch {
-        if (payload?.new) onMessage?.(payload.new);
+        const fallback = normalizeChatMessage(payload?.new);
+        if (fallback) onMessage?.(fallback);
       }
     })
     .subscribe((status) => onStatus?.(status));

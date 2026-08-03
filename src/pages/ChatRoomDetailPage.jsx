@@ -1,11 +1,45 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { addChatMembers, getChatMessages, getChatRoom, joinChatRoom, removeChatMembers, sendChatMessage, subscribeToChatMessages, updateChatRoom } from '../api/adminChatApi.js';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  addChatMembers,
+  getChatMessages,
+  getChatRoom,
+  joinChatRoom,
+  markChatRoomRead,
+  removeChatMembers,
+  sendChatMessage,
+  subscribeToChatMessages,
+  updateChatRoom,
+} from '../api/adminChatApi.js';
 import { AdminLayout } from '../components/AdminLayout.jsx';
 import { Badge, Button, Card, EmptyState, Input, Loading, Modal, PageHeader, Textarea } from '../components/Common.jsx';
 import { MemberPicker } from '../components/MemberPicker.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { navigate } from '../router.js';
 import { formatDateTime } from '../utils/format.js';
+
+function mergeMessage(messages, incoming) {
+  if (!incoming?.id) return messages;
+  const index = messages.findIndex((item) => String(item.id) === String(incoming.id));
+  if (index < 0) return [...messages, incoming];
+
+  const merged = { ...messages[index] };
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (value !== undefined) merged[key] = value;
+  });
+  const next = [...messages];
+  next[index] = merged;
+  return next;
+}
+
+function roomWithLatestMessage(room, message) {
+  if (!room || !message) return room;
+  return {
+    ...room,
+    lastMessageId: message.id ?? room.lastMessageId,
+    lastMessagePreview: message.deletedAt ? '삭제된 메시지입니다.' : (message.content ?? room.lastMessagePreview),
+    lastMessageAt: message.createdAt ?? room.lastMessageAt,
+  };
+}
 
 export function ChatRoomDetailPage({ roomId }) {
   const [room, setRoom] = useState(null);
@@ -26,42 +60,88 @@ export function ChatRoomDetailPage({ roomId }) {
   const [modalError, setModalError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const messageEndRef = useRef(null);
+  const roomRef = useRef(null);
+  const markReadTimerRef = useRef(null);
   const { showToast } = useToast();
 
-  const loadRoom = useCallback(async () => {
-    const next = await getChatRoom(roomId);
-    setRoom(next);
-    setEditTitle(next?.title || '');
-    return next;
+  const commitRoom = useCallback((nextRoom) => {
+    roomRef.current = nextRoom;
+    setRoom(nextRoom);
+    setEditTitle(nextRoom?.title || '');
+    return nextRoom;
+  }, []);
+
+
+  const scheduleMarkRead = useCallback((lastMessageId = null) => {
+    if (document.visibilityState !== 'visible' || !roomRef.current?.currentAdminActive) return;
+    window.clearTimeout(markReadTimerRef.current);
+    markReadTimerRef.current = window.setTimeout(() => {
+      markChatRoomRead(roomId, lastMessageId).catch(() => {});
+    }, 700);
   }, [roomId]);
 
+  const applyLatestMessage = useCallback((message) => {
+    setMessages((previous) => mergeMessage(previous, message));
+    setRoom((previous) => {
+      const next = roomWithLatestMessage(previous, message);
+      roomRef.current = next;
+      return next;
+    });
+    scheduleMarkRead(message?.id || null);
+  }, [scheduleMarkRead]);
+
   const load = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
-      const [nextRoom, nextMessages] = await Promise.all([loadRoom(), getChatMessages({ roomId, limit: 50 })]);
-      setRoom(nextRoom); setMessages(nextMessages);
+      const [nextRoom, nextMessages] = await Promise.all([
+        getChatRoom(roomId),
+        getChatMessages({ roomId, limit: 50 }),
+      ]);
+      commitRoom(nextRoom);
+      setMessages(nextMessages);
+      const latestMessageId = nextMessages.at(-1)?.id ?? nextRoom?.lastMessageId ?? null;
+      scheduleMarkRead(latestMessageId);
       window.setTimeout(() => messageEndRef.current?.scrollIntoView({ block: 'end' }), 30);
-    } catch (requestError) { setError(requestError.message); }
-    finally { setLoading(false); }
-  }, [loadRoom, roomId]);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [commitRoom, roomId, scheduleMarkRead]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => subscribeToChatMessages(roomId, (message) => {
-    setMessages((prev) => prev.some((item) => String(item.id) === String(message.id)) ? prev : [...prev, message]);
-    loadRoom().catch(() => {});
-    window.setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
-  }, setRealtimeStatus), [roomId, loadRoom]);
 
-  const activeMemberIds = useMemo(() => new Set((room?.members || []).map((member) => member.userId)), [room]);
+  useEffect(() => subscribeToChatMessages(roomId, (message) => {
+    applyLatestMessage(message);
+    window.setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
+  }, setRealtimeStatus), [applyLatestMessage, roomId]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        scheduleMarkRead(roomRef.current?.lastMessageId || null);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.clearTimeout(markReadTimerRef.current);
+    };
+  }, [scheduleMarkRead]);
+
 
   const loadOlder = async () => {
     if (!messages.length) return;
     setLoadingOlder(true);
     try {
       const older = await getChatMessages({ roomId, beforeMessageId: messages[0].id, limit: 50 });
-      setMessages((prev) => [...older.filter((item) => !prev.some((current) => String(current.id) === String(item.id))), ...prev]);
-    } catch (requestError) { showToast(requestError.message, 'error'); }
-    finally { setLoadingOlder(false); }
+      setMessages((previous) => [...older.filter((item) => !previous.some((current) => String(current.id) === String(item.id))), ...previous]);
+    } catch (requestError) {
+      showToast(requestError.message, 'error');
+    } finally {
+      setLoadingOlder(false);
+    }
   };
 
   const send = async (event) => {
@@ -70,44 +150,69 @@ export function ChatRoomDetailPage({ roomId }) {
     if (!normalized || sending) return;
     setSending(true);
     try {
-      if (!room?.currentAdminActive) {
-        await joinChatRoom(roomId);
-        await loadRoom();
+      if (!roomRef.current?.currentAdminActive) {
+        commitRoom(await joinChatRoom(roomId));
       }
       const message = await sendChatMessage({ roomId, content: normalized });
-      setMessages((prev) => prev.some((item) => String(item.id) === String(message.id)) ? prev : [...prev, message]);
+      applyLatestMessage(message);
       setContent('');
       window.setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
-    } catch (requestError) { showToast(requestError.message, 'error'); }
-    finally { setSending(false); }
+    } catch (requestError) {
+      showToast(requestError.message, 'error');
+    } finally {
+      setSending(false);
+    }
   };
 
   const addMembers = async () => {
     if (!selectedToAdd.length) return;
-    setSubmitting(true); setModalError('');
+    setSubmitting(true);
+    setModalError('');
     try {
-      await addChatMembers({ roomId, memberIds: selectedToAdd.map((member) => member.userId) });
-      showToast(`${selectedToAdd.length}명이 추가되었습니다.`); setAddOpen(false); setSelectedToAdd([]); await loadRoom();
-    } catch (requestError) { setModalError(requestError.message); }
-    finally { setSubmitting(false); }
+      commitRoom(await addChatMembers({ roomId, memberIds: selectedToAdd.map((member) => member.userId) }));
+      showToast(`${selectedToAdd.length}명이 추가되었습니다.`);
+      setAddOpen(false);
+      setSelectedToAdd([]);
+    } catch (requestError) {
+      setModalError(requestError.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const removeMembers = async () => {
     if (!selectedToRemove.length) return;
-    setSubmitting(true); setModalError('');
+    setSubmitting(true);
+    setModalError('');
     try {
-      await removeChatMembers({ roomId, memberIds: selectedToRemove, reason: removeReason });
-      showToast(`${selectedToRemove.length}명이 제외되었습니다.`); setRemoveOpen(false); setSelectedToRemove([]); setRemoveReason(''); await loadRoom();
-    } catch (requestError) { setModalError(requestError.message); }
-    finally { setSubmitting(false); }
+      commitRoom(await removeChatMembers({ roomId, memberIds: selectedToRemove, reason: removeReason }));
+      showToast(`${selectedToRemove.length}명이 제외되었습니다.`);
+      setRemoveOpen(false);
+      setSelectedToRemove([]);
+      setRemoveReason('');
+    } catch (requestError) {
+      setModalError(requestError.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const saveTitle = async () => {
-    if (editTitle.trim().length < 2) { setModalError('제목을 2자 이상 입력해주세요.'); return; }
-    setSubmitting(true); setModalError('');
-    try { await updateChatRoom({ roomId, title: editTitle.trim() }); showToast('채팅방 제목이 변경되었습니다.'); setEditOpen(false); await loadRoom(); }
-    catch (requestError) { setModalError(requestError.message); }
-    finally { setSubmitting(false); }
+    if (editTitle.trim().length < 2) {
+      setModalError('제목을 2자 이상 입력해주세요.');
+      return;
+    }
+    setSubmitting(true);
+    setModalError('');
+    try {
+      commitRoom(await updateChatRoom({ roomId, title: editTitle.trim() }));
+      showToast('채팅방 제목이 변경되었습니다.');
+      setEditOpen(false);
+    } catch (requestError) {
+      setModalError(requestError.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -133,7 +238,7 @@ export function ChatRoomDetailPage({ roomId }) {
           </Card>
           <Card title={`참여 회원 (${room.memberCount}/100)`} className="chat-members-card">
             <div className="chat-member-list">{room.members.map((member) => (
-              <label key={member.userId} className="chat-member-item"><input type="checkbox" checked={selectedToRemove.includes(member.userId)} onChange={(e) => setSelectedToRemove((prev) => e.target.checked ? [...prev, member.userId] : prev.filter((id) => id !== member.userId))} /><span className="member-avatar">{String(member.name || member.memberId).slice(0, 1)}</span><span><strong>{member.name}</strong><small>{member.memberId}</small></span><Badge tone={member.chatRole === 'admin' ? 'info' : 'neutral'}>{member.chatRole}</Badge></label>
+              <label key={member.userId} className="chat-member-item"><input type="checkbox" checked={selectedToRemove.includes(member.userId)} onChange={(e) => setSelectedToRemove((previous) => e.target.checked ? [...previous, member.userId] : previous.filter((id) => id !== member.userId))} /><span className="member-avatar">{String(member.name || member.memberId).slice(0, 1)}</span><span><strong>{member.name}</strong><small>{member.memberId}</small></span><Badge tone={member.chatRole === 'admin' ? 'info' : 'neutral'}>{member.chatRole}</Badge></label>
             ))}</div>
           </Card>
         </div>

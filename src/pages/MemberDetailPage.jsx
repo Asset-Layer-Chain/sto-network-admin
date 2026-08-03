@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { getMember } from '../api/adminMemberApi.js';
 import { AdminLayout } from '../components/AdminLayout.jsx';
 import { AssetAdjustmentModal } from '../components/AssetAdjustmentModal.jsx';
@@ -29,6 +30,7 @@ function ObjectFields({ data }) {
 }
 
 export function MemberDetailPage({ userId }) {
+  const { admin } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,12 +54,20 @@ export function MemberDetailPage({ userId }) {
       <PageHeader
         title={member ? `${member.mb_name} 회원 상세` : '회원 상세'}
         description={member ? `${member.mb_id} · ${member.mb_email}` : userId}
-        actions={<><Button variant="secondary" onClick={() => navigate('/members')}>목록</Button>{member ? <><Button onClick={() => setAction('deposit')}>지급</Button><Button variant="purple" onClick={() => setAction('airdrop')}>에어드랍</Button><Button variant="danger" onClick={() => setAction('withdrawal')}>차감</Button></> : null}</>}
+        actions={<>
+          <Button variant="secondary" onClick={() => navigate('/members')}>목록</Button>
+          {member && admin?.permissions?.assetDeposit ? <Button onClick={() => setAction('deposit')}>지급</Button> : null}
+          {member && admin?.permissions?.assetAirdrop ? <Button variant="purple" onClick={() => setAction('airdrop')}>에어드랍</Button> : null}
+          {member && admin?.permissions?.assetWithdrawal ? <Button variant="danger" onClick={() => setAction('withdrawal')}>차감</Button> : null}
+        </>}
       />
       {loading ? <Loading /> : null}
       {!loading && error ? <EmptyState title={error} /> : null}
       {!loading && member ? (
         <div className="detail-stack">
+          {!admin?.permissions?.assetDeposit && !admin?.permissions?.assetWithdrawal && !admin?.permissions?.assetAirdrop ? (
+            <div className="notice notice-warning">현재 계정에는 자산 처리 권한이 설정되지 않았습니다.</div>
+          ) : null}
           <div className="member-summary-grid">
             <Card><span className="summary-label">STOC_INT 사용 가능 잔액</span><strong className="summary-value">{formatNumber(data.internalStocBalance)} STOC</strong></Card>
             <Card><span className="summary-label">회원 상태</span><div className="summary-badges"><StatusBadge value={member.status} /><StatusBadge value={member.role} />{member.is_del ? <StatusBadge value="deleted" /> : null}</div></Card>

@@ -1,3 +1,5 @@
+import { formatDecimal } from './decimal.js';
+
 const KST_DATE_TIME = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Seoul',
   year: 'numeric',
@@ -17,7 +19,11 @@ export function formatDateTime(value) {
 }
 
 export function formatNumber(value, maximumFractionDigits = 8) {
-  const number = Number(value || 0);
+  const text = String(value ?? '0').trim();
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(text)) {
+    return formatDecimal(text, maximumFractionDigits);
+  }
+  const number = Number(text || 0);
   if (!Number.isFinite(number)) return '0';
   return new Intl.NumberFormat('ko-KR', { maximumFractionDigits }).format(number);
 }

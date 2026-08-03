@@ -1,0 +1,775 @@
+diff --git a/README.md b/README.md
+index 2055614..3775794 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,7 @@
+ - 회원 검색, 필터, 정렬, 서버 페이지네이션
+ - 회원 상세: 지갑, 최근 거래, 기기, 동의, 유입 정보, 탈퇴 요청, 채팅방
+ - `STOC_INT` 지급(`deposit`), 차감(`withdrawal`), 에어드랍(`airdrop`)
++- 관리자 등급별 자산 권한: 팀장급/센터장/본부
+ - 잔액 행 잠금, 거래 멱등성, 음수 잔액 방지
+ - 전체 거래 내역 조회
+ - 그룹 채팅방 생성 및 제목 변경
+@@ -52,6 +53,7 @@ VITE_APP_BASE_PATH=/
+ 
+ ```text
+ supabase/migrations/202608010050_product_admin_console.sql
++supabase/migrations/202608030100_admin_grade_permissions.sql
+ ```
+ 
+ Supabase CLI를 사용하는 경우:
+@@ -64,6 +66,7 @@ supabase db push
+ SQL Editor로 적용할 수도 있습니다. 이 마이그레이션은 아래 객체를 생성합니다.
+ 
+ - `public.admin_action_logs`
++- `public.admin_profiles`
+ - `private.require_admin()`
+ - `private.require_super_admin()`
+ - 관리자 회원/거래/채팅 payload helper
+@@ -71,19 +74,38 @@ SQL Editor로 적용할 수도 있습니다. 이 마이그레이션은 아래 
+ - 관리자 채팅 Realtime 조회 RLS 정책
+ - 채팅방 활성 인원 100명 제한 트리거
+ 
+-## 관리자 계정
++## 관리자 계정과 자산 권한
+ 
+ 로그인하려는 Auth 사용자의 `public.member.role`이 `admin` 또는 `super_admin`이어야 합니다.
+ 또한 `status = 'active'`, `is_del = false`여야 합니다.
+ 
+-관리자 역할은 운영 DB에서 승인 절차에 따라 직접 설정합니다.
++자산 작업은 `public.admin_profiles.admin_grade`에 따라 제한됩니다.
+ 
+-```sql
+-update public.member
+-set role = 'admin', updated_at = now()
+-where mb_id = '<관리자 회원 ID>';
++| 관리자 등급 | 에어드랍 | 차감 | 지급 |
++|---|:---:|:---:|:---:|
++| `team_lead` 팀장급 | O | X | X |
++| `center_director` 센터장 | O | O | X |
++| `headquarters` 본부 | O | O | O |
++
++기존 `super_admin` 계정은 `admin_profiles` 행이 없을 때만 본부 권한으로 호환됩니다.
++프로필이 존재하면서 `is_active = false`이면 자산 작업 권한이 없습니다.
++
++테스트 관리자 3개를 연결하려면 먼저 Supabase Authentication에 계정을 생성한 뒤 다음 SQL의 이메일을 확인하고 실행합니다.
++
++```text
++supabase/setup/register_admin_accounts.sql
+ ```
+ 
++기본 예시 이메일:
++
++```text
++teamlead.admin@stodev.xyz
++center.admin@stodev.xyz
++headquarters.admin@stodev.xyz
++```
++
++`auth.users`를 직접 INSERT하지 않습니다. 이메일/비밀번호 계정은 Supabase Dashboard에서 만들거나, Google 계정으로 한 번 로그인하여 Auth 사용자를 생성한 뒤 연결 SQL을 실행합니다.
++
+ ## 자산 처리 규칙
+ 
+ | UI | transaction_type | 잔액 변화 |
+@@ -125,16 +147,17 @@ rpc_admin_list_action_logs
+ 
+ ## 1차 통합 확인 순서
+ 
+-1. 마이그레이션 적용
+-2. 관리자 계정 로그인
+-3. 회원 목록 및 상세 전체 컬럼 조회
+-4. 테스트 회원에게 `deposit` 1 STOC
+-5. 동일 화면에서 `withdrawal` 1 STOC
+-6. `airdrop` 1 STOC
+-7. 거래 내역 및 관리자 로그 확인
+-8. 관리자 + 테스트 회원으로 그룹 채팅방 생성
+-9. 회원 추가/제외
+-10. 서로 다른 브라우저에서 실시간 채팅 확인
+-11. 100명 초과 추가 요청 차단 확인
++1. 마이그레이션 2개 순서대로 적용
++2. Auth 계정 3개 생성 후 `register_admin_accounts.sql` 실행
++3. 관리자 계정 로그인
++4. 팀장급 계정에서 에어드랍만 노출·실행되는지 확인
++5. 센터장 계정에서 에어드랍·차감만 노출·실행되는지 확인
++6. 본부 계정에서 지급·에어드랍·차감이 모두 노출·실행되는지 확인
++7. 권한이 없는 action을 RPC로 직접 호출했을 때 거부되는지 확인
++8. 회원 목록 및 상세 전체 컬럼 조회
++9. 거래 내역 및 관리자 로그의 `adminGrade` 확인
++10. 관리자 + 테스트 회원으로 그룹 채팅방 생성
++11. 회원 추가/제외 및 실시간 채팅 확인
++12. 100명 초과 추가 요청 차단 확인
+ 
+ 상세 점검표는 `docs/INTEGRATION_CHECKLIST.md`를 참고합니다.
+diff --git a/docs/INTEGRATION_CHECKLIST.md b/docs/INTEGRATION_CHECKLIST.md
+index ee53d55..6183b2e 100644
+--- a/docs/INTEGRATION_CHECKLIST.md
++++ b/docs/INTEGRATION_CHECKLIST.md
+@@ -5,6 +5,8 @@
+ - [ ] 비로그인 사용자는 로그인 화면만 표시된다.
+ - [ ] `role = user` 계정은 접근 거부된다.
+ - [ ] `admin`, `super_admin` 계정은 회원 관리 화면으로 진입한다.
++- [ ] 관리자 등급과 한글 등급명이 사이드바에 표시된다.
++- [ ] `admin_profiles.is_active = false` 계정은 관리자 화면에는 진입하지만 자산 작업은 할 수 없다.
+ - [ ] 로그아웃 후 관리자 RPC를 호출할 수 없다.
+ 
+ ## 회원
+@@ -15,7 +17,15 @@
+ - [ ] 회원 상세의 `member` 객체에 실제 컬럼이 모두 표시된다.
+ - [ ] `STOC_INT/internal` 지갑이 없는 회원은 잔액 0으로 표시된다.
+ 
+-## 자산
++## 자산 권한
++
++- [ ] 팀장급은 에어드랍 버튼만 보이며 deposit/withdrawal 직접 RPC 호출은 거부된다.
++- [ ] 센터장은 에어드랍·차감 버튼만 보이며 deposit 직접 RPC 호출은 거부된다.
++- [ ] 본부는 지급·에어드랍·차감 버튼이 모두 보인다.
++- [ ] 권한 없는 요청은 `ADMIN_ASSET_PERMISSION_DENIED`로 실패한다.
++- [ ] 프로필이 없는 일반 admin은 `ADMIN_PROFILE_REQUIRED`로 실패한다.
++
++## 자산 처리
+ 
+ - [ ] 지급 시 잔액과 `deposit` 거래가 같은 트랜잭션에서 생성된다.
+ - [ ] 차감 시 `withdrawal` 거래가 생성되고 잔액 부족 요청은 실패한다.
+@@ -23,6 +33,7 @@
+ - [ ] 모든 거래 `amount`는 양수다.
+ - [ ] 동일 idempotency key 재요청은 잔액을 두 번 변경하지 않는다.
+ - [ ] 거래 metadata와 감사 로그의 변경 전후 잔액이 일치한다.
++- [ ] 거래 metadata와 감사 로그 metadata에 관리자 `admin_grade`가 남는다.
+ 
+ ## 채팅
+ 
+@@ -39,5 +50,4 @@
+ ## 자산 감사 로그
+ 
+ - [ ] 자산 지급/차감/에어드랍 로그가 생성된다.
+-- [ ] 방 생성/수정/회원 추가/제외/관리자 참여 로그가 생성된다.
+ - [ ] 브라우저에서 `admin_action_logs`를 직접 수정하거나 삭제할 수 없다.
+diff --git a/src/api/rpcClient.js b/src/api/rpcClient.js
+index bc13871..e8c44a8 100644
+--- a/src/api/rpcClient.js
++++ b/src/api/rpcClient.js
+@@ -3,6 +3,8 @@ import { getSupabaseClient } from './supabaseClient.js';
+ const ERROR_MESSAGES = {
+   AUTH_REQUIRED: '로그인이 필요합니다.',
+   ADMIN_PERMISSION_REQUIRED: '관리자 권한이 필요합니다.',
++  ADMIN_PROFILE_REQUIRED: '관리자 자산 권한 등급이 설정되지 않았습니다.',
++  ADMIN_ASSET_PERMISSION_DENIED: '현재 관리자 등급으로는 이 자산 작업을 수행할 수 없습니다.',
+   SUPER_ADMIN_PERMISSION_REQUIRED: '최고 관리자 권한이 필요합니다.',
+   MEMBER_NOT_FOUND: '회원을 찾을 수 없습니다.',
+   MEMBER_DELETED: '탈퇴 또는 삭제된 회원입니다.',
+diff --git a/src/components/AdminLayout.jsx b/src/components/AdminLayout.jsx
+index 81726a7..0f00aee 100644
+--- a/src/components/AdminLayout.jsx
++++ b/src/components/AdminLayout.jsx
+@@ -29,6 +29,7 @@ export function AdminLayout({ active, children }) {
+         </nav>
+         <div className="sidebar-user">
+           <div><strong>{admin?.name || admin?.mbName || admin?.memberId || '관리자'}</strong><StatusBadge value={admin?.role} /></div>
++          <div className="sidebar-grade">{admin?.adminGrade ? <StatusBadge value={admin.adminGrade} /> : <span>자산 권한 미설정</span>}</div>
+           <small>{admin?.email || admin?.mbEmail || ''}</small>
+           <Button variant="ghost" size="sm" onClick={signOut}>로그아웃</Button>
+         </div>
+diff --git a/src/components/AssetAdjustmentModal.jsx b/src/components/AssetAdjustmentModal.jsx
+index 27a21ae..4be61c3 100644
+--- a/src/components/AssetAdjustmentModal.jsx
++++ b/src/components/AssetAdjustmentModal.jsx
+@@ -1,4 +1,5 @@
+ import React, { useEffect, useMemo, useState } from 'react';
++import { useAuth } from '../auth/AuthContext.jsx';
+ import { adjustStoc } from '../api/adminTransactionApi.js';
+ import { createIdempotencyKey } from '../api/rpcClient.js';
+ import {
+@@ -18,6 +19,7 @@ const ACTIONS = {
+ };
+ 
+ export function AssetAdjustmentModal({ open, member, action, onClose, onCompleted }) {
++  const { admin } = useAuth();
+   const config = ACTIONS[action] || ACTIONS.deposit;
+   const [amount, setAmount] = useState('');
+   const [reason, setReason] = useState('');
+@@ -44,6 +46,16 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
+   const requiresStatusWarning = memberStatus === 'pending' || memberStatus === 'suspended';
+ 
+   const submit = async () => {
++    const permissionKey = {
++      deposit: 'assetDeposit',
++      withdrawal: 'assetWithdrawal',
++      airdrop: 'assetAirdrop',
++    }[action];
++    if (!permissionKey || !admin?.permissions?.[permissionKey]) {
++      setError('현재 관리자 등급으로는 이 자산 작업을 수행할 수 없습니다.');
++      return;
++    }
++
+     const normalizedAmount = amount.trim();
+     if (!isValidStocAmount(normalizedAmount)) {
+       setError(`금액은 0보다 크고, 정수 15자리·소수점 8자리 이내여야 합니다. 최대 ${STOC_MAX_AMOUNT} STOC`);
+diff --git a/src/components/Common.jsx b/src/components/Common.jsx
+index 3265e72..f5ba3a8 100644
+--- a/src/components/Common.jsx
++++ b/src/components/Common.jsx
+@@ -38,13 +38,20 @@ export function Badge({ children, tone = 'neutral' }) {
+ }
+ 
+ export function StatusBadge({ value }) {
++  const key = String(value || '');
+   const tone = {
+     active: 'success', completed: 'success', admin: 'info', super_admin: 'purple',
+     pending: 'warning', processing: 'info', suspended: 'danger', deleted: 'danger',
+     failed: 'danger', cancelled: 'neutral', user: 'neutral',
+     deposit: 'success', airdrop: 'purple', withdrawal: 'danger',
+-  }[String(value)] || 'neutral';
+-  return <Badge tone={tone}>{value || '-'}</Badge>;
++    team_lead: 'info', center_director: 'purple', headquarters: 'success',
++  }[key] || 'neutral';
++  const label = {
++    team_lead: '팀장급',
++    center_director: '센터장',
++    headquarters: '본부',
++  }[key] || value || '-';
++  return <Badge tone={tone}>{label}</Badge>;
+ }
+ 
+ export function Loading({ label = '불러오는 중입니다.' }) {
+diff --git a/src/pages/LoginPage.jsx b/src/pages/LoginPage.jsx
+index e19bf8a..c8550f1 100644
+--- a/src/pages/LoginPage.jsx
++++ b/src/pages/LoginPage.jsx
+@@ -31,7 +31,7 @@ export function LoginPage() {
+     <div className="login-page">
+       <div className="login-panel">
+         <div className="login-brand"><span className="brand-mark">S</span><div><strong>STO Network</strong><small>Product Admin</small></div></div>
+-        <div className="login-copy"><h1>관리자 로그인</h1><p>승인된 admin 또는 super_admin 계정만 접근할 수 있습니다.</p></div>
++        <div className="login-copy"><h1>관리자 로그인</h1><p>승인된 관리자 계정만 접근할 수 있으며 자산 기능은 등급별로 제한됩니다.</p></div>
+         {!configured ? <div className="notice notice-danger">`.env.local`에 Supabase 환경변수를 설정해주세요.</div> : null}
+         <form onSubmit={submit} className="login-form">
+           <Input label="이메일" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+diff --git a/src/pages/MemberDetailPage.jsx b/src/pages/MemberDetailPage.jsx
+index 524ab59..e693eea 100644
+--- a/src/pages/MemberDetailPage.jsx
++++ b/src/pages/MemberDetailPage.jsx
+@@ -1,4 +1,5 @@
+ import React, { useCallback, useEffect, useMemo, useState } from 'react';
++import { useAuth } from '../auth/AuthContext.jsx';
+ import { getMember } from '../api/adminMemberApi.js';
+ import { AdminLayout } from '../components/AdminLayout.jsx';
+ import { AssetAdjustmentModal } from '../components/AssetAdjustmentModal.jsx';
+@@ -29,6 +30,7 @@ function ObjectFields({ data }) {
+ }
+ 
+ export function MemberDetailPage({ userId }) {
++  const { admin } = useAuth();
+   const [data, setData] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState('');
+@@ -52,12 +54,20 @@ export function MemberDetailPage({ userId }) {
+       <PageHeader
+         title={member ? `${member.mb_name} 회원 상세` : '회원 상세'}
+         description={member ? `${member.mb_id} · ${member.mb_email}` : userId}
+-        actions={<><Button variant="secondary" onClick={() => navigate('/members')}>목록</Button>{member ? <><Button onClick={() => setAction('deposit')}>지급</Button><Button variant="purple" onClick={() => setAction('airdrop')}>에어드랍</Button><Button variant="danger" onClick={() => setAction('withdrawal')}>차감</Button></> : null}</>}
++        actions={<>
++          <Button variant="secondary" onClick={() => navigate('/members')}>목록</Button>
++          {member && admin?.permissions?.assetDeposit ? <Button onClick={() => setAction('deposit')}>지급</Button> : null}
++          {member && admin?.permissions?.assetAirdrop ? <Button variant="purple" onClick={() => setAction('airdrop')}>에어드랍</Button> : null}
++          {member && admin?.permissions?.assetWithdrawal ? <Button variant="danger" onClick={() => setAction('withdrawal')}>차감</Button> : null}
++        </>}
+       />
+       {loading ? <Loading /> : null}
+       {!loading && error ? <EmptyState title={error} /> : null}
+       {!loading && member ? (
+         <div className="detail-stack">
++          {!admin?.permissions?.assetDeposit && !admin?.permissions?.assetWithdrawal && !admin?.permissions?.assetAirdrop ? (
++            <div className="notice notice-warning">현재 계정에는 자산 처리 권한이 설정되지 않았습니다.</div>
++          ) : null}
+           <div className="member-summary-grid">
+             <Card><span className="summary-label">STOC_INT 사용 가능 잔액</span><strong className="summary-value">{formatNumber(data.internalStocBalance)} STOC</strong></Card>
+             <Card><span className="summary-label">회원 상태</span><div className="summary-badges"><StatusBadge value={member.status} /><StatusBadge value={member.role} />{member.is_del ? <StatusBadge value="deleted" /> : null}</div></Card>
+diff --git a/src/styles.css b/src/styles.css
+index 4e967fc..4b55616 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -34,6 +34,8 @@ small { color: var(--muted); }
+ .sidebar-nav button.active { background: #374151; color: white; font-weight: 700; }
+ .sidebar-user { margin-top: auto; border-top: 1px solid #374151; padding: 18px 8px 0; }
+ .sidebar-user > div { display: flex; gap: 8px; align-items: center; }
++.sidebar-user .sidebar-grade { margin-top: 8px; flex-wrap: wrap; }
++.sidebar-user .sidebar-grade > span { color: #9ca3af; font-size: 12px; }
+ .sidebar-user small { display: block; margin: 6px 0 12px; word-break: break-all; }
+ .sidebar-user .button { width: 100%; color: #d1d5db; border-color: #4b5563; }
+ .main-content { min-width: 0; padding: 32px; }
+diff --git a/supabase/migrations/202608030100_admin_grade_permissions.sql b/supabase/migrations/202608030100_admin_grade_permissions.sql
+new file mode 100644
+index 0000000..aa397e1
+--- /dev/null
++++ b/supabase/migrations/202608030100_admin_grade_permissions.sql
+@@ -0,0 +1,345 @@
++-- STO Network Product Admin - 관리자 등급별 자산 권한
++-- team_lead: airdrop
++-- center_director: airdrop, withdrawal
++-- headquarters: deposit, airdrop, withdrawal
++
++create table if not exists public.admin_profiles (
++  user_id uuid primary key references public.member(user_id) on delete cascade,
++  admin_grade text not null check (
++    admin_grade in ('team_lead', 'center_director', 'headquarters')
++  ),
++  is_active boolean not null default true,
++  created_at timestamptz not null default now(),
++  updated_at timestamptz not null default now()
++);
++
++create index if not exists admin_profiles_grade_active_idx
++  on public.admin_profiles(admin_grade, is_active);
++
++create or replace function private.touch_admin_profiles_updated_at()
++returns trigger
++language plpgsql
++security definer
++set search_path = ''
++as $$
++begin
++  new.updated_at := now();
++  return new;
++end;
++$$;
++
++revoke all on function private.touch_admin_profiles_updated_at() from public, anon, authenticated;
++drop trigger if exists admin_profiles_touch_updated_at on public.admin_profiles;
++create trigger admin_profiles_touch_updated_at
++before update on public.admin_profiles
++for each row execute function private.touch_admin_profiles_updated_at();
++
++alter table public.admin_profiles enable row level security;
++revoke all on public.admin_profiles from public, anon, authenticated;
++
++create or replace function private.admin_grade_for(
++  p_user_id uuid,
++  p_member_role text
++)
++returns text
++language plpgsql
++stable
++security definer
++set search_path = ''
++as $$
++declare
++  v_profile public.admin_profiles%rowtype;
++begin
++  select *
++    into v_profile
++    from public.admin_profiles ap
++   where ap.user_id = p_user_id;
++
++  if found then
++    if not v_profile.is_active then
++      return null;
++    end if;
++    return v_profile.admin_grade;
++  end if;
++
++  -- 기존 super_admin 계정은 프로필을 추가하기 전에도 본부 권한으로 호환한다.
++  if p_member_role = 'super_admin' then
++    return 'headquarters';
++  end if;
++
++  return null;
++end;
++$$;
++
++create or replace function private.require_admin_asset_permission(
++  p_user_id uuid,
++  p_member_role text,
++  p_action text
++)
++returns text
++language plpgsql
++stable
++security definer
++set search_path = ''
++as $$
++declare
++  v_action text := lower(trim(coalesce(p_action, '')));
++  v_grade text;
++  v_allowed boolean := false;
++begin
++  v_grade := private.admin_grade_for(p_user_id, p_member_role);
++
++  if v_grade is null then
++    raise exception using errcode = 'P0001', message = 'ADMIN_PROFILE_REQUIRED';
++  end if;
++
++  v_allowed := case v_action
++    when 'airdrop' then v_grade in ('team_lead', 'center_director', 'headquarters')
++    when 'withdrawal' then v_grade in ('center_director', 'headquarters')
++    when 'deposit' then v_grade = 'headquarters'
++    else false
++  end;
++
++  if not v_allowed then
++    raise exception using errcode = 'P0001', message = 'ADMIN_ASSET_PERMISSION_DENIED';
++  end if;
++
++  return v_grade;
++end;
++$$;
++
++revoke all on function private.admin_grade_for(uuid, text) from public, anon, authenticated;
++revoke all on function private.require_admin_asset_permission(uuid, text, text) from public, anon, authenticated;
++
++create or replace function public.rpc_admin_get_session()
++returns jsonb
++language plpgsql
++stable
++security definer
++set search_path = ''
++as $$
++declare
++  v_admin public.member%rowtype;
++  v_grade text;
++  v_grade_label text;
++begin
++  v_admin := private.require_admin();
++  v_grade := private.admin_grade_for(v_admin.user_id, v_admin.role);
++  v_grade_label := case v_grade
++    when 'team_lead' then '팀장급'
++    when 'center_director' then '센터장'
++    when 'headquarters' then '본부'
++    else '자산 권한 미설정'
++  end;
++
++  return jsonb_build_object(
++    'userId', v_admin.user_id,
++    'memberNo', v_admin.mb_no,
++    'memberId', v_admin.mb_id,
++    'name', v_admin.mb_name,
++    'email', v_admin.mb_email,
++    'profile', v_admin.mb_profile,
++    'role', v_admin.role,
++    'adminGrade', v_grade,
++    'adminGradeLabel', v_grade_label,
++    'permissions', jsonb_build_object(
++      'memberRead', true,
++      'assetDeposit', v_grade = 'headquarters',
++      'assetWithdrawal', v_grade in ('center_director', 'headquarters'),
++      'assetAirdrop', v_grade in ('team_lead', 'center_director', 'headquarters'),
++      'chatManage', true,
++      'adminLogRead', true
++    )
++  );
++end;
++$$;
++
++create or replace function public.rpc_admin_adjust_stoc(
++  p_target_user_id uuid,
++  p_action text,
++  p_amount numeric,
++  p_reason text,
++  p_idempotency_key text
++)
++returns jsonb
++language plpgsql
++volatile
++security definer
++set search_path = ''
++as $$
++declare
++  v_admin public.member%rowtype;
++  v_admin_grade text;
++  v_target public.member%rowtype;
++  v_action text := lower(trim(coalesce(p_action, '')));
++  v_reason text := trim(coalesce(p_reason, ''));
++  v_key text := trim(coalesce(p_idempotency_key, ''));
++  v_wallet public.wallet_accounts%rowtype;
++  v_existing public.transactions%rowtype;
++  v_transaction_id uuid;
++  v_balance_before numeric;
++  v_balance_after numeric;
++  v_log_id uuid;
++begin
++  v_admin := private.require_admin();
++
++  if v_action not in ('deposit', 'withdrawal', 'airdrop') then
++    raise exception using errcode = 'P0001', message = 'INVALID_ADMIN_TRANSACTION_TYPE';
++  end if;
++
++  v_admin_grade := private.require_admin_asset_permission(
++    v_admin.user_id,
++    v_admin.role,
++    v_action
++  );
++
++  if p_amount is null or p_amount <= 0 then
++    raise exception using errcode = 'P0001', message = 'INVALID_AMOUNT';
++  end if;
++  if p_amount <> round(p_amount, 8) then
++    raise exception using errcode = 'P0001', message = 'INVALID_AMOUNT_SCALE';
++  end if;
++  if p_amount > 999999999999999.99999999::numeric then
++    raise exception using errcode = 'P0001', message = 'ADMIN_AMOUNT_LIMIT_EXCEEDED';
++  end if;
++  if char_length(v_reason) < 2 then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_REQUIRED';
++  end if;
++  if v_key = '' then
++    raise exception using errcode = 'P0001', message = 'IDEMPOTENCY_KEY_REQUIRED';
++  end if;
++
++  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_key, 0));
++
++  select * into v_existing
++    from public.transactions t
++   where t.idempotency_key = v_key;
++
++  if found then
++    if v_existing.transaction_type <> v_action
++       or v_existing.amount <> p_amount
++       or (v_action = 'withdrawal' and v_existing.sender_user_id is distinct from p_target_user_id)
++       or (v_action in ('deposit', 'airdrop') and v_existing.receiver_user_id is distinct from p_target_user_id) then
++      raise exception using errcode = 'P0001', message = 'IDEMPOTENCY_KEY_CONFLICT';
++    end if;
++
++    return jsonb_build_object(
++      'alreadyProcessed', true,
++      'action', v_action,
++      'amount', p_amount::text,
++      'balanceBefore', coalesce(v_existing.metadata ->> 'balance_before', '0'),
++      'balanceAfter', coalesce(v_existing.metadata ->> 'balance_after', '0'),
++      'transaction', private.admin_transaction_payload(v_existing.id)
++    );
++  end if;
++
++  select * into v_target
++    from public.member m
++   where m.user_id = p_target_user_id;
++  if not found then
++    raise exception using errcode = 'P0001', message = 'MEMBER_NOT_FOUND';
++  end if;
++  if v_target.status = 'deleted' or coalesce(v_target.is_del, false) then
++    raise exception using errcode = 'P0001', message = 'MEMBER_DELETED';
++  end if;
++
++  insert into public.wallet_accounts(user_id, asset_code, account_type, available_balance, locked_balance)
++  values (p_target_user_id, 'STOC_INT', 'internal', 0, 0)
++  on conflict (user_id, asset_code, account_type) do nothing;
++
++  select * into v_wallet
++    from public.wallet_accounts wa
++   where wa.user_id = p_target_user_id
++     and wa.asset_code = 'STOC_INT'
++     and wa.account_type = 'internal'
++   for update;
++
++  v_balance_before := v_wallet.available_balance;
++  if v_action = 'withdrawal' and v_balance_before < p_amount then
++    raise exception using errcode = 'P0001', message = 'INSUFFICIENT_BALANCE';
++  end if;
++
++  update public.wallet_accounts wa
++     set available_balance = case
++           when v_action = 'withdrawal' then wa.available_balance - p_amount
++           else wa.available_balance + p_amount
++         end,
++         updated_at = now()
++   where wa.id = v_wallet.id
++  returning wa.available_balance into v_balance_after;
++
++  insert into public.transactions(
++    sender_user_id,
++    receiver_user_id,
++    asset_code,
++    amount,
++    fee_amount,
++    transaction_type,
++    status,
++    description,
++    reference_type,
++    idempotency_key,
++    metadata,
++    processed_at
++  ) values (
++    case when v_action = 'withdrawal' then p_target_user_id else null end,
++    case when v_action in ('deposit', 'airdrop') then p_target_user_id else null end,
++    'STOC_INT',
++    p_amount,
++    0,
++    v_action,
++    'completed',
++    v_reason,
++    'admin_adjustment',
++    v_key,
++    jsonb_build_object(
++      'source', 'sto_network_admin',
++      'admin_actor_user_id', v_admin.user_id,
++      'admin_actor_member_id', v_admin.mb_id,
++      'admin_grade', v_admin_grade,
++      'target_user_id', p_target_user_id,
++      'target_member_id', v_target.mb_id,
++      'requested_action', v_action,
++      'reason', v_reason,
++      'balance_before', v_balance_before,
++      'balance_after', v_balance_after
++    ),
++    now()
++  ) returning id into v_transaction_id;
++
++  insert into public.admin_action_logs(
++    actor_user_id, action_type, target_user_id, transaction_id,
++    reason, idempotency_key, before_data, after_data, metadata
++  ) values (
++    v_admin.user_id,
++    'wallet.' || v_action,
++    p_target_user_id,
++    v_transaction_id,
++    v_reason,
++    v_key,
++    jsonb_build_object('assetCode', 'STOC_INT', 'availableBalance', v_balance_before),
++    jsonb_build_object('assetCode', 'STOC_INT', 'availableBalance', v_balance_after),
++    jsonb_build_object(
++      'amount', p_amount,
++      'targetMemberId', v_target.mb_id,
++      'adminGrade', v_admin_grade
++    )
++  ) returning id into v_log_id;
++
++  return jsonb_build_object(
++    'alreadyProcessed', false,
++    'action', v_action,
++    'amount', p_amount::text,
++    'balanceBefore', v_balance_before::text,
++    'balanceAfter', v_balance_after::text,
++    'adminGrade', v_admin_grade,
++    'adminLogId', v_log_id,
++    'transaction', private.admin_transaction_payload(v_transaction_id)
++  );
++end;
++$$;
++
++revoke all on function public.rpc_admin_get_session() from public, anon;
++revoke all on function public.rpc_admin_adjust_stoc(uuid, text, numeric, text, text) from public, anon;
++grant execute on function public.rpc_admin_get_session() to authenticated;
++grant execute on function public.rpc_admin_adjust_stoc(uuid, text, numeric, text, text) to authenticated;
+diff --git a/supabase/setup/register_admin_accounts.sql b/supabase/setup/register_admin_accounts.sql
+new file mode 100644
+index 0000000..8781ec9
+--- /dev/null
++++ b/supabase/setup/register_admin_accounts.sql
+@@ -0,0 +1,119 @@
++-- 관리자 Auth 계정 3개를 public.member / public.admin_profiles에 연결합니다.
++-- 실행 전 Supabase Authentication > Users에서 아래 이메일 계정을 생성하거나,
++-- 각 Google 계정으로 한 번 로그인하여 auth.users에 계정이 존재하게 해야 합니다.
++-- 이메일은 운영 계정에 맞게 수정한 뒤 SQL Editor에서 실행하세요.
++
++begin;
++
++do $$
++declare
++  v_missing_emails text;
++begin
++  with admin_config(email) as (
++    values
++      ('teamlead.admin@stodev.xyz'::text),
++      ('center.admin@stodev.xyz'::text),
++      ('headquarters.admin@stodev.xyz'::text)
++  )
++  select string_agg(c.email, ', ' order by c.email)
++    into v_missing_emails
++    from admin_config c
++    left join auth.users u on lower(u.email) = lower(c.email)
++   where u.id is null;
++
++  if v_missing_emails is not null then
++    raise exception using
++      errcode = 'P0001',
++      message = 'AUTH_USERS_NOT_FOUND: ' || v_missing_emails;
++  end if;
++end;
++$$;
++
++with admin_config(email, member_id, member_name, admin_grade) as (
++  values
++    ('teamlead.admin@stodev.xyz'::text, 'admin_team_lead'::text, '팀장급 관리자'::text, 'team_lead'::text),
++    ('center.admin@stodev.xyz'::text, 'admin_center_director'::text, '센터장 관리자'::text, 'center_director'::text),
++    ('headquarters.admin@stodev.xyz'::text, 'admin_headquarters'::text, '본부 관리자'::text, 'headquarters'::text)
++)
++insert into public.member (
++  user_id,
++  mb_id,
++  mb_name,
++  mb_email,
++  status,
++  role,
++  referral_code,
++  signup_method,
++  signup_completed_at
++)
++select
++  u.id,
++  c.member_id,
++  c.member_name,
++  u.email,
++  'active',
++  'admin',
++  'ADMIN-' || upper(substr(replace(u.id::text, '-', ''), 1, 16)),
++  'admin',
++  now()
++from admin_config c
++join auth.users u on lower(u.email) = lower(c.email)
++on conflict (user_id) do update
++set
++  mb_id = excluded.mb_id,
++  mb_name = excluded.mb_name,
++  mb_email = excluded.mb_email,
++  status = 'active',
++  role = 'admin',
++  is_del = false,
++  deleted_at = null,
++  deletion_reason_code = null,
++  deletion_reason_text = null,
++  updated_at = now();
++
++with admin_config(email, admin_grade) as (
++  values
++    ('teamlead.admin@stodev.xyz'::text, 'team_lead'::text),
++    ('center.admin@stodev.xyz'::text, 'center_director'::text),
++    ('headquarters.admin@stodev.xyz'::text, 'headquarters'::text)
++)
++insert into public.admin_profiles (
++  user_id,
++  admin_grade,
++  is_active
++)
++select
++  u.id,
++  c.admin_grade,
++  true
++from admin_config c
++join auth.users u on lower(u.email) = lower(c.email)
++on conflict (user_id) do update
++set
++  admin_grade = excluded.admin_grade,
++  is_active = true,
++  updated_at = now();
++
++commit;
++
++select
++  m.user_id,
++  m.mb_id,
++  m.mb_name,
++  m.mb_email,
++  m.role,
++  ap.admin_grade,
++  ap.is_active
++from public.member m
++join public.admin_profiles ap on ap.user_id = m.user_id
++where lower(m.mb_email) in (
++  'teamlead.admin@stodev.xyz',
++  'center.admin@stodev.xyz',
++  'headquarters.admin@stodev.xyz'
++)
++order by case ap.admin_grade
++  when 'team_lead' then 1
++  when 'center_director' then 2
++  when 'headquarters' then 3
++  else 4
++end;

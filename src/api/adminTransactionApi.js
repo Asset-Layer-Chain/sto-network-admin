@@ -10,7 +10,7 @@ export function adjustStoc({ userId, action, amount, reason, idempotencyKey }) {
   return callRpc('rpc_admin_adjust_stoc', {
     p_target_user_id: userId,
     p_action: action,
-    p_amount: Number(amount),
+    p_amount: String(amount || '').trim(),
     p_reason: String(reason || '').trim(),
     p_idempotency_key: idempotencyKey || createIdempotencyKey(`admin-${action}`),
   });

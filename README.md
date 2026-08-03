@@ -9,6 +9,7 @@
 - 회원 검색, 필터, 정렬, 서버 페이지네이션
 - 회원 상세: 지갑, 최근 거래, 기기, 동의, 유입 정보, 탈퇴 요청, 채팅방
 - `STOC_INT` 지급(`deposit`), 차감(`withdrawal`), 에어드랍(`airdrop`)
+- 관리자 등급별 자산 권한: 팀장급/센터장/본부
 - 잔액 행 잠금, 거래 멱등성, 음수 잔액 방지
 - 전체 거래 내역 조회
 - 그룹 채팅방 생성 및 제목 변경
@@ -52,6 +53,7 @@ VITE_APP_BASE_PATH=/
 
 ```text
 supabase/migrations/202608010050_product_admin_console.sql
+supabase/migrations/202608030100_admin_grade_permissions.sql
 ```
 
 Supabase CLI를 사용하는 경우:
@@ -64,6 +66,7 @@ supabase db push
 SQL Editor로 적용할 수도 있습니다. 이 마이그레이션은 아래 객체를 생성합니다.
 
 - `public.admin_action_logs`
+- `public.admin_profiles`
 - `private.require_admin()`
 - `private.require_super_admin()`
 - 관리자 회원/거래/채팅 payload helper
@@ -71,18 +74,37 @@ SQL Editor로 적용할 수도 있습니다. 이 마이그레이션은 아래 �
 - 관리자 채팅 Realtime 조회 RLS 정책
 - 채팅방 활성 인원 100명 제한 트리거
 
-## 관리자 계정
+## 관리자 계정과 자산 권한
 
 로그인하려는 Auth 사용자의 `public.member.role`이 `admin` 또는 `super_admin`이어야 합니다.
 또한 `status = 'active'`, `is_del = false`여야 합니다.
 
-관리자 역할은 운영 DB에서 승인 절차에 따라 직접 설정합니다.
+자산 작업은 `public.admin_profiles.admin_grade`에 따라 제한됩니다.
 
-```sql
-update public.member
-set role = 'admin', updated_at = now()
-where mb_id = '<관리자 회원 ID>';
+| 관리자 등급 | 에어드랍 | 차감 | 지급 |
+|---|:---:|:---:|:---:|
+| `team_lead` 팀장급 | O | X | X |
+| `center_director` 센터장 | O | O | X |
+| `headquarters` 본부 | O | O | O |
+
+기존 `super_admin` 계정은 `admin_profiles` 행이 없을 때만 본부 권한으로 호환됩니다.
+프로필이 존재하면서 `is_active = false`이면 자산 작업 권한이 없습니다.
+
+테스트 관리자 3개를 연결하려면 먼저 Supabase Authentication에 계정을 생성한 뒤 다음 SQL의 이메일을 확인하고 실행합니다.
+
+```text
+supabase/setup/register_admin_accounts.sql
 ```
+
+기본 예시 이메일:
+
+```text
+teamlead.admin@stodev.xyz
+center.admin@stodev.xyz
+headquarters.admin@stodev.xyz
+```
+
+`auth.users`를 직접 INSERT하지 않습니다. 이메일/비밀번호 계정은 Supabase Dashboard에서 만들거나, Google 계정으로 한 번 로그인하여 Auth 사용자를 생성한 뒤 연결 SQL을 실행합니다.
 
 ## 자산 처리 규칙
 
@@ -125,16 +147,17 @@ rpc_admin_list_action_logs
 
 ## 1차 통합 확인 순서
 
-1. 마이그레이션 적용
-2. 관리자 계정 로그인
-3. 회원 목록 및 상세 전체 컬럼 조회
-4. 테스트 회원에게 `deposit` 1 STOC
-5. 동일 화면에서 `withdrawal` 1 STOC
-6. `airdrop` 1 STOC
-7. 거래 내역 및 관리자 로그 확인
-8. 관리자 + 테스트 회원으로 그룹 채팅방 생성
-9. 회원 추가/제외
-10. 서로 다른 브라우저에서 실시간 채팅 확인
-11. 100명 초과 추가 요청 차단 확인
+1. 마이그레이션 2개 순서대로 적용
+2. Auth 계정 3개 생성 후 `register_admin_accounts.sql` 실행
+3. 관리자 계정 로그인
+4. 팀장급 계정에서 에어드랍만 노출·실행되는지 확인
+5. 센터장 계정에서 에어드랍·차감만 노출·실행되는지 확인
+6. 본부 계정에서 지급·에어드랍·차감이 모두 노출·실행되는지 확인
+7. 권한이 없는 action을 RPC로 직접 호출했을 때 거부되는지 확인
+8. 회원 목록 및 상세 전체 컬럼 조회
+9. 거래 내역 및 관리자 로그의 `adminGrade` 확인
+10. 관리자 + 테스트 회원으로 그룹 채팅방 생성
+11. 회원 추가/제외 및 실시간 채팅 확인
+12. 100명 초과 추가 요청 차단 확인
 
 상세 점검표는 `docs/INTEGRATION_CHECKLIST.md`를 참고합니다.

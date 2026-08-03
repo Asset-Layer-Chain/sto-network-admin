@@ -27,10 +27,10 @@ export function AdminLogPage() {
 
   return (
     <AdminLayout active="admin-logs">
-      <PageHeader title="관리자 작업 로그" description="자산 및 채팅 관리 작업의 변경 전후 데이터를 조회합니다." />
+      <PageHeader title="관리자 작업 로그" description="자산 관리 작업의 변경 전후 데이터를 조회합니다." />
       <Card><form className="filter-grid" onSubmit={apply}>
         <Input label="검색" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} placeholder="관리자, 대상 회원, 사유, 요청 ID" />
-        <Select label="작업 유형" value={filters.actionType} onChange={(e) => setFilters({ ...filters, actionType: e.target.value })}><option value="">전체</option><option value="wallet.deposit">wallet.deposit</option><option value="wallet.withdrawal">wallet.withdrawal</option><option value="wallet.airdrop">wallet.airdrop</option><option value="chat.room_create">chat.room_create</option><option value="chat.room_update">chat.room_update</option><option value="chat.member_add">chat.member_add</option><option value="chat.member_remove">chat.member_remove</option><option value="chat.admin_join">chat.admin_join</option></Select>
+        <Select label="작업 유형" value={filters.actionType} onChange={(e) => setFilters({ ...filters, actionType: e.target.value })}><option value="">전체</option><option value="wallet.deposit">wallet.deposit</option><option value="wallet.withdrawal">wallet.withdrawal</option><option value="wallet.airdrop">wallet.airdrop</option></Select>
         <Input label="관리자 UUID" value={filters.actorUserId} onChange={(e) => setFilters({ ...filters, actorUserId: e.target.value })} />
         <Input label="시작일" type="datetime-local" value={filters.fromAt} onChange={(e) => setFilters({ ...filters, fromAt: e.target.value })} />
         <Input label="종료일" type="datetime-local" value={filters.toAt} onChange={(e) => setFilters({ ...filters, toAt: e.target.value })} />

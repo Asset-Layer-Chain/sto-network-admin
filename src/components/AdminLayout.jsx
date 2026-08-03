@@ -29,6 +29,7 @@ export function AdminLayout({ active, children }) {
         </nav>
         <div className="sidebar-user">
           <div><strong>{admin?.name || admin?.mbName || admin?.memberId || '관리자'}</strong><StatusBadge value={admin?.role} /></div>
+          <div className="sidebar-grade">{admin?.adminGrade ? <StatusBadge value={admin.adminGrade} /> : <span>자산 권한 미설정</span>}</div>
           <small>{admin?.email || admin?.mbEmail || ''}</small>
           <Button variant="ghost" size="sm" onClick={signOut}>로그아웃</Button>
         </div>
