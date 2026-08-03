@@ -18,6 +18,7 @@ export async function listMembers(filters = {}) {
     page: Number(result?.page || 1),
     pageSize: Number(result?.pageSize || result?.page_size || 30),
     totalCount: Number(result?.totalCount || result?.total_count || 0),
+    searchRequired: Boolean(result?.searchRequired || result?.search_required),
   };
 }
 

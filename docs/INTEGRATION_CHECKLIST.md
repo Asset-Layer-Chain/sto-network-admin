@@ -51,3 +51,11 @@
 
 - [ ] 자산 지급/차감/에어드랍 로그가 생성된다.
 - [ ] 브라우저에서 `admin_action_logs`를 직접 수정하거나 삭제할 수 없다.
+
+## 팀장급 회원 검색 전용 확인
+
+- [ ] `team_lead` 로그인 후 회원 관리 최초 진입에서 `rpc_admin_list_members` 전체 결과가 노출되지 않는다.
+- [ ] `team_lead`가 빈 검색으로 RPC를 직접 호출해도 `items=[]`, `searchRequired=true`가 반환된다.
+- [ ] `team_lead`가 정확한 회원 ID/이름/이메일/전화번호/UUID/회원번호를 검색하면 해당 회원만 조회된다.
+- [ ] `team_lead`의 채팅 회원 선택기는 검색어 입력 전 회원을 노출하지 않는다.
+- [ ] `center_director`, `headquarters`는 기존처럼 전체 회원 목록과 부분 검색을 사용할 수 있다.

@@ -54,6 +54,7 @@ VITE_APP_BASE_PATH=/
 ```text
 supabase/migrations/202608010050_product_admin_console.sql
 supabase/migrations/202608030100_admin_grade_permissions.sql
+supabase/migrations/202608030200_team_lead_member_search.sql
 ```
 
 Supabase CLI를 사용하는 경우:
@@ -147,7 +148,7 @@ rpc_admin_list_action_logs
 
 ## 1차 통합 확인 순서
 
-1. 마이그레이션 2개 순서대로 적용
+1. 마이그레이션 3개 순서대로 적용
 2. Auth 계정 3개 생성 후 `register_admin_accounts.sql` 실행
 3. 관리자 계정 로그인
 4. 팀장급 계정에서 에어드랍만 노출·실행되는지 확인
@@ -161,3 +162,7 @@ rpc_admin_list_action_logs
 12. 100명 초과 추가 요청 차단 확인
 
 상세 점검표는 `docs/INTEGRATION_CHECKLIST.md`를 참고합니다.
+
+## 팀장급 회원 조회 제한
+
+`202608030200_team_lead_member_search.sql` 적용 후 `team_lead` 계정은 회원 관리 진입 시 전체 목록을 받지 않습니다. 회원 ID, 이름, 이메일, 전화번호, UUID 또는 회원번호를 정확히 검색해야 결과가 반환되며 최대 20건으로 제한됩니다. 센터장과 본부 계정의 기존 전체 목록 조회는 유지됩니다.
