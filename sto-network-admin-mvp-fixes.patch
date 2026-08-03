@@ -1,0 +1,779 @@
+diff --git a/docs/INTEGRATION_CHECKLIST.md b/docs/INTEGRATION_CHECKLIST.md
+index 2bd2056..ee53d55 100644
+--- a/docs/INTEGRATION_CHECKLIST.md
++++ b/docs/INTEGRATION_CHECKLIST.md
+@@ -36,7 +36,7 @@
+ - [ ] 신규 메시지가 Realtime으로 반영된다.
+ - [ ] 방에 없는 관리자는 첫 메시지 전송 시 방 관리자로 참여한다.
+ 
+-## 감사 로그
++## 자산 감사 로그
+ 
+ - [ ] 자산 지급/차감/에어드랍 로그가 생성된다.
+ - [ ] 방 생성/수정/회원 추가/제외/관리자 참여 로그가 생성된다.
+diff --git a/src/api/adminChatApi.js b/src/api/adminChatApi.js
+index cb64497..83eb464 100644
+--- a/src/api/adminChatApi.js
++++ b/src/api/adminChatApi.js
+@@ -1,6 +1,23 @@
+ import { callRpc } from './rpcClient.js';
+ import { getSupabaseClient } from './supabaseClient.js';
+ 
++function normalizeChatMessage(message) {
++  if (!message) return null;
++  return {
++    id: message.id,
++    roomId: message.roomId ?? message.room_id,
++    senderId: message.senderId ?? message.sender_id,
++    senderName: message.senderName ?? message.sender_name,
++    senderMemberId: message.senderMemberId ?? message.sender_member_id,
++    senderAvatar: message.senderAvatar ?? message.sender_avatar,
++    senderRole: message.senderRole ?? message.sender_role,
++    clientMessageId: message.clientMessageId ?? message.client_message_id,
++    content: message.content,
++    deletedAt: message.deletedAt ?? message.deleted_at,
++    createdAt: message.createdAt ?? message.created_at,
++  };
++}
++
+ export async function listChatRooms(filters = {}) {
+   const result = await callRpc('rpc_admin_list_chat_rooms', {
+     p_search: filters.search || null,
+@@ -58,18 +75,31 @@ export async function getChatMessages({ roomId, beforeMessageId = null, limit =
+     p_before_message_id: beforeMessageId,
+     p_limit: limit,
+   });
+-  return Array.isArray(result) ? result : [];
++  return Array.isArray(result) ? result.map(normalizeChatMessage).filter(Boolean) : [];
+ }
+ 
+-export function getChatMessage(messageId) {
+-  return callRpc('rpc_admin_get_chat_message', { p_message_id: messageId });
++export async function getChatMessage(messageId) {
++  return normalizeChatMessage(await callRpc('rpc_admin_get_chat_message', { p_message_id: messageId }));
+ }
+ 
+-export function sendChatMessage({ roomId, content, clientMessageId = null }) {
+-  return callRpc('rpc_send_chat_message', {
++export async function sendChatMessage({ roomId, content, clientMessageId = null }) {
++  const message = normalizeChatMessage(await callRpc('rpc_send_chat_message', {
+     p_room_id: roomId,
+     p_client_message_id: clientMessageId || globalThis.crypto?.randomUUID?.(),
+     p_content: content,
++  }));
++  if (!message?.id || message.senderRole) return message;
++  try {
++    return await getChatMessage(message.id);
++  } catch {
++    return message;
++  }
++}
++
++export function markChatRoomRead(roomId, lastMessageId = null) {
++  return callRpc('rpc_mark_chat_room_read', {
++    p_room_id: roomId,
++    p_last_message_id: lastMessageId,
+   });
+ }
+ 
+@@ -87,7 +117,8 @@ export function subscribeToChatMessages(roomId, onMessage, onStatus) {
+         const message = await getChatMessage(payload?.new?.id);
+         if (message) onMessage?.(message);
+       } catch {
+-        if (payload?.new) onMessage?.(payload.new);
++        const fallback = normalizeChatMessage(payload?.new);
++        if (fallback) onMessage?.(fallback);
+       }
+     })
+     .subscribe((status) => onStatus?.(status));
+diff --git a/src/api/adminTransactionApi.js b/src/api/adminTransactionApi.js
+index 21285ac..752ba4a 100644
+--- a/src/api/adminTransactionApi.js
++++ b/src/api/adminTransactionApi.js
+@@ -10,7 +10,7 @@ export function adjustStoc({ userId, action, amount, reason, idempotencyKey }) {
+   return callRpc('rpc_admin_adjust_stoc', {
+     p_target_user_id: userId,
+     p_action: action,
+-    p_amount: Number(amount),
++    p_amount: String(amount || '').trim(),
+     p_reason: String(reason || '').trim(),
+     p_idempotency_key: idempotencyKey || createIdempotencyKey(`admin-${action}`),
+   });
+diff --git a/src/api/rpcClient.js b/src/api/rpcClient.js
+index eb7414b..bc13871 100644
+--- a/src/api/rpcClient.js
++++ b/src/api/rpcClient.js
+@@ -8,6 +8,8 @@ const ERROR_MESSAGES = {
+   MEMBER_DELETED: '탈퇴 또는 삭제된 회원입니다.',
+   INVALID_ADMIN_TRANSACTION_TYPE: '지원하지 않는 자산 처리 유형입니다.',
+   INVALID_AMOUNT: '금액은 0보다 커야 합니다.',
++  INVALID_AMOUNT_SCALE: '금액은 소수점 8자리 이내로 입력해주세요.',
++  ADMIN_AMOUNT_LIMIT_EXCEEDED: '한 번에 처리할 수 있는 최대 금액을 초과했습니다.',
+   ADMIN_REASON_REQUIRED: '처리 사유를 입력해주세요.',
+   IDEMPOTENCY_KEY_REQUIRED: '요청 식별값이 없습니다.',
+   INSUFFICIENT_BALANCE: '회원의 보유 잔액이 부족합니다.',
+diff --git a/src/components/AssetAdjustmentModal.jsx b/src/components/AssetAdjustmentModal.jsx
+index f620f57..27a21ae 100644
+--- a/src/components/AssetAdjustmentModal.jsx
++++ b/src/components/AssetAdjustmentModal.jsx
+@@ -1,7 +1,13 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { adjustStoc } from '../api/adminTransactionApi.js';
+ import { createIdempotencyKey } from '../api/rpcClient.js';
+-import { formatNumber } from '../utils/format.js';
++import {
++  STOC_MAX_AMOUNT,
++  calculateStocBalance,
++  formatDecimal,
++  formatScaledDecimal,
++  isValidStocAmount,
++} from '../utils/decimal.js';
+ import { Button, Input, Modal, Textarea } from './Common.jsx';
+ import { useToast } from './Toast.jsx';
+ 
+@@ -28,20 +34,26 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
+     setIdempotencyKey(createIdempotencyKey(`admin-${action}`));
+   }, [open, action]);
+ 
+-  const currentBalance = Number(member?.internalStocBalance ?? member?.internal_stoc_balance ?? 0);
+-  const numericAmount = Number(amount || 0);
+-  const expected = useMemo(() => currentBalance + (config.sign * numericAmount), [currentBalance, numericAmount, config.sign]);
++  const currentBalance = String(member?.internalStocBalance ?? member?.internal_stoc_balance ?? '0');
++  const expectedScaled = useMemo(
++    () => calculateStocBalance(currentBalance, amount || '0', config.sign),
++    [currentBalance, amount, config.sign],
++  );
++  const expectedIsNegative = expectedScaled !== null && expectedScaled < 0n;
++  const memberStatus = String(member?.status || '');
++  const requiresStatusWarning = memberStatus === 'pending' || memberStatus === 'suspended';
+ 
+   const submit = async () => {
+-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+-      setError('금액은 0보다 커야 합니다.');
++    const normalizedAmount = amount.trim();
++    if (!isValidStocAmount(normalizedAmount)) {
++      setError(`금액은 0보다 크고, 정수 15자리·소수점 8자리 이내여야 합니다. 최대 ${STOC_MAX_AMOUNT} STOC`);
+       return;
+     }
+     if (reason.trim().length < 2) {
+       setError('처리 사유를 2자 이상 입력해주세요.');
+       return;
+     }
+-    if (action === 'withdrawal' && expected < 0) {
++    if (action === 'withdrawal' && expectedIsNegative) {
+       setError('보유 잔액보다 많이 차감할 수 없습니다.');
+       return;
+     }
+@@ -52,11 +64,11 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
+       const result = await adjustStoc({
+         userId: member.user_id || member.userId,
+         action,
+-        amount: numericAmount,
++        amount: normalizedAmount,
+         reason,
+         idempotencyKey,
+       });
+-      showToast(`${formatNumber(numericAmount)} STOC ${config.submit.replace(' 확정', '')} 처리되었습니다.`);
++      showToast(`${formatDecimal(normalizedAmount)} STOC ${config.submit.replace(' 확정', '')} 처리되었습니다.`);
+       onCompleted?.(result);
+       onClose?.();
+     } catch (requestError) {
+@@ -71,14 +83,16 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
+       open={open}
+       title={config.title}
+       onClose={submitting ? undefined : onClose}
+-      footer={<><Button variant="secondary" onClick={onClose} disabled={submitting}>취소</Button><Button variant={action === 'withdrawal' ? 'danger' : 'primary'} onClick={submit} disabled={submitting}>{submitting ? '처리 중' : `${formatNumber(numericAmount)} STOC ${config.submit}`}</Button></>}
++      footer={<><Button variant="secondary" onClick={onClose} disabled={submitting}>취소</Button><Button variant={action === 'withdrawal' ? 'danger' : 'primary'} onClick={submit} disabled={submitting}>{submitting ? '처리 중' : `${formatDecimal(amount || '0')} STOC ${config.submit}`}</Button></>}
+     >
+       <div className="summary-box">
+         <div><span>대상 회원</span><strong>{member?.mb_name || member?.name} ({member?.mb_id || member?.memberId})</strong></div>
+-        <div><span>현재 잔액</span><strong>{formatNumber(currentBalance)} STOC</strong></div>
+-        <div><span>처리 후 예상</span><strong className={expected < 0 ? 'text-danger' : ''}>{formatNumber(expected)} STOC</strong></div>
++        <div><span>회원 상태</span><strong>{memberStatus || '-'}</strong></div>
++        <div><span>현재 잔액</span><strong>{formatDecimal(currentBalance)} STOC</strong></div>
++        <div><span>처리 후 예상</span><strong className={expectedIsNegative ? 'text-danger' : ''}>{expectedScaled === null ? '-' : `${formatScaledDecimal(expectedScaled)} STOC`}</strong></div>
+       </div>
+-      <Input label="금액" type="number" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
++      {requiresStatusWarning ? <div className="notice notice-warning">현재 {memberStatus} 상태인 회원입니다. 상태를 확인한 뒤 처리해주세요.</div> : null}
++      <Input label="금액" type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00000000" autoComplete="off" />
+       <Textarea label="처리 사유" rows="4" maxLength="300" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="감사 로그와 거래 메타데이터에 저장됩니다." />
+       {error ? <p className="form-error">{error}</p> : null}
+     </Modal>
+diff --git a/src/pages/AdminLogPage.jsx b/src/pages/AdminLogPage.jsx
+index b0ea7dd..842bb9f 100644
+--- a/src/pages/AdminLogPage.jsx
++++ b/src/pages/AdminLogPage.jsx
+@@ -27,10 +27,10 @@ export function AdminLogPage() {
+ 
+   return (
+     <AdminLayout active="admin-logs">
+-      <PageHeader title="관리자 작업 로그" description="자산 및 채팅 관리 작업의 변경 전후 데이터를 조회합니다." />
++      <PageHeader title="관리자 작업 로그" description="자산 관리 작업의 변경 전후 데이터를 조회합니다." />
+       <Card><form className="filter-grid" onSubmit={apply}>
+         <Input label="검색" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} placeholder="관리자, 대상 회원, 사유, 요청 ID" />
+-        <Select label="작업 유형" value={filters.actionType} onChange={(e) => setFilters({ ...filters, actionType: e.target.value })}><option value="">전체</option><option value="wallet.deposit">wallet.deposit</option><option value="wallet.withdrawal">wallet.withdrawal</option><option value="wallet.airdrop">wallet.airdrop</option><option value="chat.room_create">chat.room_create</option><option value="chat.room_update">chat.room_update</option><option value="chat.member_add">chat.member_add</option><option value="chat.member_remove">chat.member_remove</option><option value="chat.admin_join">chat.admin_join</option></Select>
++        <Select label="작업 유형" value={filters.actionType} onChange={(e) => setFilters({ ...filters, actionType: e.target.value })}><option value="">전체</option><option value="wallet.deposit">wallet.deposit</option><option value="wallet.withdrawal">wallet.withdrawal</option><option value="wallet.airdrop">wallet.airdrop</option></Select>
+         <Input label="관리자 UUID" value={filters.actorUserId} onChange={(e) => setFilters({ ...filters, actorUserId: e.target.value })} />
+         <Input label="시작일" type="datetime-local" value={filters.fromAt} onChange={(e) => setFilters({ ...filters, fromAt: e.target.value })} />
+         <Input label="종료일" type="datetime-local" value={filters.toAt} onChange={(e) => setFilters({ ...filters, toAt: e.target.value })} />
+diff --git a/src/pages/ChatRoomDetailPage.jsx b/src/pages/ChatRoomDetailPage.jsx
+index a99f365..fb9bfd5 100644
+--- a/src/pages/ChatRoomDetailPage.jsx
++++ b/src/pages/ChatRoomDetailPage.jsx
+@@ -1,5 +1,15 @@
+-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+-import { addChatMembers, getChatMessages, getChatRoom, joinChatRoom, removeChatMembers, sendChatMessage, subscribeToChatMessages, updateChatRoom } from '../api/adminChatApi.js';
++import React, { useCallback, useEffect, useRef, useState } from 'react';
++import {
++  addChatMembers,
++  getChatMessages,
++  getChatRoom,
++  joinChatRoom,
++  markChatRoomRead,
++  removeChatMembers,
++  sendChatMessage,
++  subscribeToChatMessages,
++  updateChatRoom,
++} from '../api/adminChatApi.js';
+ import { AdminLayout } from '../components/AdminLayout.jsx';
+ import { Badge, Button, Card, EmptyState, Input, Loading, Modal, PageHeader, Textarea } from '../components/Common.jsx';
+ import { MemberPicker } from '../components/MemberPicker.jsx';
+@@ -7,6 +17,30 @@ import { useToast } from '../components/Toast.jsx';
+ import { navigate } from '../router.js';
+ import { formatDateTime } from '../utils/format.js';
+ 
++function mergeMessage(messages, incoming) {
++  if (!incoming?.id) return messages;
++  const index = messages.findIndex((item) => String(item.id) === String(incoming.id));
++  if (index < 0) return [...messages, incoming];
++
++  const merged = { ...messages[index] };
++  Object.entries(incoming).forEach(([key, value]) => {
++    if (value !== undefined) merged[key] = value;
++  });
++  const next = [...messages];
++  next[index] = merged;
++  return next;
++}
++
++function roomWithLatestMessage(room, message) {
++  if (!room || !message) return room;
++  return {
++    ...room,
++    lastMessageId: message.id ?? room.lastMessageId,
++    lastMessagePreview: message.deletedAt ? '삭제된 메시지입니다.' : (message.content ?? room.lastMessagePreview),
++    lastMessageAt: message.createdAt ?? room.lastMessageAt,
++  };
++}
++
+ export function ChatRoomDetailPage({ roomId }) {
+   const [room, setRoom] = useState(null);
+   const [messages, setMessages] = useState([]);
+@@ -26,42 +60,88 @@ export function ChatRoomDetailPage({ roomId }) {
+   const [modalError, setModalError] = useState('');
+   const [submitting, setSubmitting] = useState(false);
+   const messageEndRef = useRef(null);
++  const roomRef = useRef(null);
++  const markReadTimerRef = useRef(null);
+   const { showToast } = useToast();
+ 
+-  const loadRoom = useCallback(async () => {
+-    const next = await getChatRoom(roomId);
+-    setRoom(next);
+-    setEditTitle(next?.title || '');
+-    return next;
++  const commitRoom = useCallback((nextRoom) => {
++    roomRef.current = nextRoom;
++    setRoom(nextRoom);
++    setEditTitle(nextRoom?.title || '');
++    return nextRoom;
++  }, []);
++
++
++  const scheduleMarkRead = useCallback((lastMessageId = null) => {
++    if (document.visibilityState !== 'visible' || !roomRef.current?.currentAdminActive) return;
++    window.clearTimeout(markReadTimerRef.current);
++    markReadTimerRef.current = window.setTimeout(() => {
++      markChatRoomRead(roomId, lastMessageId).catch(() => {});
++    }, 700);
+   }, [roomId]);
+ 
++  const applyLatestMessage = useCallback((message) => {
++    setMessages((previous) => mergeMessage(previous, message));
++    setRoom((previous) => {
++      const next = roomWithLatestMessage(previous, message);
++      roomRef.current = next;
++      return next;
++    });
++    scheduleMarkRead(message?.id || null);
++  }, [scheduleMarkRead]);
++
+   const load = useCallback(async () => {
+-    setLoading(true); setError('');
++    setLoading(true);
++    setError('');
+     try {
+-      const [nextRoom, nextMessages] = await Promise.all([loadRoom(), getChatMessages({ roomId, limit: 50 })]);
+-      setRoom(nextRoom); setMessages(nextMessages);
++      const [nextRoom, nextMessages] = await Promise.all([
++        getChatRoom(roomId),
++        getChatMessages({ roomId, limit: 50 }),
++      ]);
++      commitRoom(nextRoom);
++      setMessages(nextMessages);
++      const latestMessageId = nextMessages.at(-1)?.id ?? nextRoom?.lastMessageId ?? null;
++      scheduleMarkRead(latestMessageId);
+       window.setTimeout(() => messageEndRef.current?.scrollIntoView({ block: 'end' }), 30);
+-    } catch (requestError) { setError(requestError.message); }
+-    finally { setLoading(false); }
+-  }, [loadRoom, roomId]);
++    } catch (requestError) {
++      setError(requestError.message);
++    } finally {
++      setLoading(false);
++    }
++  }, [commitRoom, roomId, scheduleMarkRead]);
+ 
+   useEffect(() => { load(); }, [load]);
++
+   useEffect(() => subscribeToChatMessages(roomId, (message) => {
+-    setMessages((prev) => prev.some((item) => String(item.id) === String(message.id)) ? prev : [...prev, message]);
+-    loadRoom().catch(() => {});
++    applyLatestMessage(message);
+     window.setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
+-  }, setRealtimeStatus), [roomId, loadRoom]);
++  }, setRealtimeStatus), [applyLatestMessage, roomId]);
++
++  useEffect(() => {
++    const handleVisibility = () => {
++      if (document.visibilityState === 'visible') {
++        scheduleMarkRead(roomRef.current?.lastMessageId || null);
++      }
++    };
++    document.addEventListener('visibilitychange', handleVisibility);
++    return () => {
++      document.removeEventListener('visibilitychange', handleVisibility);
++      window.clearTimeout(markReadTimerRef.current);
++    };
++  }, [scheduleMarkRead]);
+ 
+-  const activeMemberIds = useMemo(() => new Set((room?.members || []).map((member) => member.userId)), [room]);
+ 
+   const loadOlder = async () => {
+     if (!messages.length) return;
+     setLoadingOlder(true);
+     try {
+       const older = await getChatMessages({ roomId, beforeMessageId: messages[0].id, limit: 50 });
+-      setMessages((prev) => [...older.filter((item) => !prev.some((current) => String(current.id) === String(item.id))), ...prev]);
+-    } catch (requestError) { showToast(requestError.message, 'error'); }
+-    finally { setLoadingOlder(false); }
++      setMessages((previous) => [...older.filter((item) => !previous.some((current) => String(current.id) === String(item.id))), ...previous]);
++    } catch (requestError) {
++      showToast(requestError.message, 'error');
++    } finally {
++      setLoadingOlder(false);
++    }
+   };
+ 
+   const send = async (event) => {
+@@ -70,44 +150,69 @@ export function ChatRoomDetailPage({ roomId }) {
+     if (!normalized || sending) return;
+     setSending(true);
+     try {
+-      if (!room?.currentAdminActive) {
+-        await joinChatRoom(roomId);
+-        await loadRoom();
++      if (!roomRef.current?.currentAdminActive) {
++        commitRoom(await joinChatRoom(roomId));
+       }
+       const message = await sendChatMessage({ roomId, content: normalized });
+-      setMessages((prev) => prev.some((item) => String(item.id) === String(message.id)) ? prev : [...prev, message]);
++      applyLatestMessage(message);
+       setContent('');
+       window.setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
+-    } catch (requestError) { showToast(requestError.message, 'error'); }
+-    finally { setSending(false); }
++    } catch (requestError) {
++      showToast(requestError.message, 'error');
++    } finally {
++      setSending(false);
++    }
+   };
+ 
+   const addMembers = async () => {
+     if (!selectedToAdd.length) return;
+-    setSubmitting(true); setModalError('');
++    setSubmitting(true);
++    setModalError('');
+     try {
+-      await addChatMembers({ roomId, memberIds: selectedToAdd.map((member) => member.userId) });
+-      showToast(`${selectedToAdd.length}명이 추가되었습니다.`); setAddOpen(false); setSelectedToAdd([]); await loadRoom();
+-    } catch (requestError) { setModalError(requestError.message); }
+-    finally { setSubmitting(false); }
++      commitRoom(await addChatMembers({ roomId, memberIds: selectedToAdd.map((member) => member.userId) }));
++      showToast(`${selectedToAdd.length}명이 추가되었습니다.`);
++      setAddOpen(false);
++      setSelectedToAdd([]);
++    } catch (requestError) {
++      setModalError(requestError.message);
++    } finally {
++      setSubmitting(false);
++    }
+   };
+ 
+   const removeMembers = async () => {
+     if (!selectedToRemove.length) return;
+-    setSubmitting(true); setModalError('');
++    setSubmitting(true);
++    setModalError('');
+     try {
+-      await removeChatMembers({ roomId, memberIds: selectedToRemove, reason: removeReason });
+-      showToast(`${selectedToRemove.length}명이 제외되었습니다.`); setRemoveOpen(false); setSelectedToRemove([]); setRemoveReason(''); await loadRoom();
+-    } catch (requestError) { setModalError(requestError.message); }
+-    finally { setSubmitting(false); }
++      commitRoom(await removeChatMembers({ roomId, memberIds: selectedToRemove, reason: removeReason }));
++      showToast(`${selectedToRemove.length}명이 제외되었습니다.`);
++      setRemoveOpen(false);
++      setSelectedToRemove([]);
++      setRemoveReason('');
++    } catch (requestError) {
++      setModalError(requestError.message);
++    } finally {
++      setSubmitting(false);
++    }
+   };
+ 
+   const saveTitle = async () => {
+-    if (editTitle.trim().length < 2) { setModalError('제목을 2자 이상 입력해주세요.'); return; }
+-    setSubmitting(true); setModalError('');
+-    try { await updateChatRoom({ roomId, title: editTitle.trim() }); showToast('채팅방 제목이 변경되었습니다.'); setEditOpen(false); await loadRoom(); }
+-    catch (requestError) { setModalError(requestError.message); }
+-    finally { setSubmitting(false); }
++    if (editTitle.trim().length < 2) {
++      setModalError('제목을 2자 이상 입력해주세요.');
++      return;
++    }
++    setSubmitting(true);
++    setModalError('');
++    try {
++      commitRoom(await updateChatRoom({ roomId, title: editTitle.trim() }));
++      showToast('채팅방 제목이 변경되었습니다.');
++      setEditOpen(false);
++    } catch (requestError) {
++      setModalError(requestError.message);
++    } finally {
++      setSubmitting(false);
++    }
+   };
+ 
+   return (
+@@ -133,7 +238,7 @@ export function ChatRoomDetailPage({ roomId }) {
+           </Card>
+           <Card title={`참여 회원 (${room.memberCount}/100)`} className="chat-members-card">
+             <div className="chat-member-list">{room.members.map((member) => (
+-              <label key={member.userId} className="chat-member-item"><input type="checkbox" checked={selectedToRemove.includes(member.userId)} onChange={(e) => setSelectedToRemove((prev) => e.target.checked ? [...prev, member.userId] : prev.filter((id) => id !== member.userId))} /><span className="member-avatar">{String(member.name || member.memberId).slice(0, 1)}</span><span><strong>{member.name}</strong><small>{member.memberId}</small></span><Badge tone={member.chatRole === 'admin' ? 'info' : 'neutral'}>{member.chatRole}</Badge></label>
++              <label key={member.userId} className="chat-member-item"><input type="checkbox" checked={selectedToRemove.includes(member.userId)} onChange={(e) => setSelectedToRemove((previous) => e.target.checked ? [...previous, member.userId] : previous.filter((id) => id !== member.userId))} /><span className="member-avatar">{String(member.name || member.memberId).slice(0, 1)}</span><span><strong>{member.name}</strong><small>{member.memberId}</small></span><Badge tone={member.chatRole === 'admin' ? 'info' : 'neutral'}>{member.chatRole}</Badge></label>
+             ))}</div>
+           </Card>
+         </div>
+diff --git a/src/styles.css b/src/styles.css
+index 6db37cd..4e967fc 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -192,6 +192,7 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
+ .login-visual p { color: #cbd5e1; }
+ .notice { border-radius: 8px; padding: 11px 13px; margin-bottom: 16px; font-size: 13px; }
+ .notice-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
++.notice-warning { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+ .center-page { min-height: 100vh; display: grid; place-items: center; padding: 40px; }
+ .center-card { width: 100%; max-width: 520px; padding: 44px; background: white; border: 1px solid var(--border); border-radius: 14px; text-align: center; }
+ .center-card .brand-mark { margin-bottom: 18px; }
+diff --git a/src/utils/decimal.js b/src/utils/decimal.js
+new file mode 100644
+index 0000000..76cbfb1
+--- /dev/null
++++ b/src/utils/decimal.js
+@@ -0,0 +1,66 @@
++export const STOC_DECIMAL_SCALE = 8;
++export const STOC_MAX_INTEGER_DIGITS = 15;
++export const STOC_MAX_AMOUNT = '999999999999999.99999999';
++
++const DECIMAL_PATTERN = /^([+-]?)(\d+)(?:\.(\d+))?$/;
++const STOC_AMOUNT_PATTERN = /^(?:0|[1-9]\d{0,14})(?:\.\d{1,8})?$/;
++
++function splitDecimal(value) {
++  const text = String(value ?? '').trim();
++  const match = text.match(DECIMAL_PATTERN);
++  if (!match) return null;
++  return {
++    negative: match[1] === '-',
++    integer: match[2],
++    fraction: match[3] || '',
++  };
++}
++
++export function decimalToScaledBigInt(value, scale = STOC_DECIMAL_SCALE) {
++  const parsed = splitDecimal(value);
++  if (!parsed || parsed.fraction.length > scale) return null;
++
++  const integer = parsed.integer.replace(/^0+(?=\d)/, '') || '0';
++  const fraction = parsed.fraction.padEnd(scale, '0');
++  const magnitude = BigInt(`${integer}${fraction}` || '0');
++  return parsed.negative ? -magnitude : magnitude;
++}
++
++export function isValidStocAmount(value) {
++  const text = String(value ?? '').trim();
++  if (!STOC_AMOUNT_PATTERN.test(text)) return false;
++  const scaled = decimalToScaledBigInt(text);
++  const max = decimalToScaledBigInt(STOC_MAX_AMOUNT);
++  return scaled !== null && max !== null && scaled > 0n && scaled <= max;
++}
++
++export function calculateStocBalance(balance, amount, sign = 1) {
++  const balanceScaled = decimalToScaledBigInt(balance);
++  const amountScaled = decimalToScaledBigInt(amount || '0');
++  if (balanceScaled === null || amountScaled === null) return null;
++  return balanceScaled + (sign < 0 ? -amountScaled : amountScaled);
++}
++
++export function formatScaledDecimal(value, scale = STOC_DECIMAL_SCALE) {
++  if (typeof value !== 'bigint') return '0';
++  const negative = value < 0n;
++  const absolute = negative ? -value : value;
++  const digits = absolute.toString().padStart(scale + 1, '0');
++  const integer = digits.slice(0, -scale) || '0';
++  const fraction = digits.slice(-scale).replace(/0+$/, '');
++  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
++  return `${negative ? '-' : ''}${grouped}${fraction ? `.${fraction}` : ''}`;
++}
++
++export function formatDecimal(value, maximumFractionDigits = STOC_DECIMAL_SCALE) {
++  const parsed = splitDecimal(value);
++  if (!parsed) return '0';
++
++  const integer = (parsed.integer.replace(/^0+(?=\d)/, '') || '0')
++    .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
++  const fraction = parsed.fraction
++    .slice(0, Math.max(0, maximumFractionDigits))
++    .replace(/0+$/, '');
++  const isZero = /^0(?:\.0*)?$/.test(`${parsed.integer}.${parsed.fraction}`);
++  return `${parsed.negative && !isZero ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`;
++}
+diff --git a/src/utils/format.js b/src/utils/format.js
+index c72d52f..6fdba58 100644
+--- a/src/utils/format.js
++++ b/src/utils/format.js
+@@ -1,3 +1,5 @@
++import { formatDecimal } from './decimal.js';
++
+ const KST_DATE_TIME = new Intl.DateTimeFormat('en-CA', {
+   timeZone: 'Asia/Seoul',
+   year: 'numeric',
+@@ -17,7 +19,11 @@ export function formatDateTime(value) {
+ }
+ 
+ export function formatNumber(value, maximumFractionDigits = 8) {
+-  const number = Number(value || 0);
++  const text = String(value ?? '0').trim();
++  if (/^[+-]?\d+(?:\.\d+)?$/.test(text)) {
++    return formatDecimal(text, maximumFractionDigits);
++  }
++  const number = Number(text || 0);
+   if (!Number.isFinite(number)) return '0';
+   return new Intl.NumberFormat('ko-KR', { maximumFractionDigits }).format(number);
+ }
+diff --git a/supabase/migrations/202608010050_product_admin_console.sql b/supabase/migrations/202608010050_product_admin_console.sql
+index 81fa7cd..c0e32a0 100644
+--- a/supabase/migrations/202608010050_product_admin_console.sql
++++ b/supabase/migrations/202608010050_product_admin_console.sql
+@@ -112,8 +112,8 @@ as $$
+       'senderAddress', t.sender_address,
+       'receiverAddress', t.receiver_address,
+       'assetCode', t.asset_code,
+-      'amount', t.amount,
+-      'feeAmount', t.fee_amount,
++      'amount', t.amount::text,
++      'feeAmount', t.fee_amount::text,
+       'transactionType', t.transaction_type,
+       'status', t.status,
+       'description', t.description,
+@@ -442,7 +442,11 @@ begin
+      offset v_offset
+      limit v_page_size
+   )
+-  select coalesce(jsonb_agg(to_jsonb(page_data)), '[]'::jsonb)
++  select coalesce(jsonb_agg(
++           to_jsonb(page_data) || jsonb_build_object(
++             'internal_stoc_balance', page_data.internal_stoc_balance::text
++           )
++         ), '[]'::jsonb)
+     into v_items
+     from page_data;
+ 
+@@ -549,7 +553,12 @@ begin
+      and wa.account_type = 'internal';
+   v_internal_balance := coalesce(v_internal_balance, 0::numeric);
+ 
+-  select coalesce(jsonb_agg(to_jsonb(wa) order by wa.asset_code, wa.account_type), '[]'::jsonb)
++  select coalesce(jsonb_agg(
++           to_jsonb(wa) || jsonb_build_object(
++             'available_balance', wa.available_balance::text,
++             'locked_balance', wa.locked_balance::text
++           ) order by wa.asset_code, wa.account_type
++         ), '[]'::jsonb)
+     into v_wallet_accounts
+     from public.wallet_accounts wa
+    where wa.user_id = p_user_id;
+@@ -605,7 +614,7 @@ begin
+ 
+   return jsonb_build_object(
+     'member', to_jsonb(v_member),
+-    'internalStocBalance', v_internal_balance,
++    'internalStocBalance', v_internal_balance::text,
+     'walletAccounts', coalesce(v_wallet_accounts, '[]'::jsonb),
+     'walletAddresses', coalesce(v_wallet_addresses, '[]'::jsonb),
+     'devices', coalesce(v_devices, '[]'::jsonb),
+@@ -655,6 +664,12 @@ begin
+   if p_amount is null or p_amount <= 0 then
+     raise exception using errcode = 'P0001', message = 'INVALID_AMOUNT';
+   end if;
++  if p_amount <> round(p_amount, 8) then
++    raise exception using errcode = 'P0001', message = 'INVALID_AMOUNT_SCALE';
++  end if;
++  if p_amount > 999999999999999.99999999::numeric then
++    raise exception using errcode = 'P0001', message = 'ADMIN_AMOUNT_LIMIT_EXCEEDED';
++  end if;
+   if char_length(v_reason) < 2 then
+     raise exception using errcode = 'P0001', message = 'ADMIN_REASON_REQUIRED';
+   end if;
+@@ -679,9 +694,9 @@ begin
+     return jsonb_build_object(
+       'alreadyProcessed', true,
+       'action', v_action,
+-      'amount', p_amount,
+-      'balanceBefore', coalesce((v_existing.metadata ->> 'balance_before')::numeric, 0),
+-      'balanceAfter', coalesce((v_existing.metadata ->> 'balance_after')::numeric, 0),
++      'amount', p_amount::text,
++      'balanceBefore', coalesce(v_existing.metadata ->> 'balance_before', '0'),
++      'balanceAfter', coalesce(v_existing.metadata ->> 'balance_after', '0'),
+       'transaction', private.admin_transaction_payload(v_existing.id)
+     );
+   end if;
+@@ -777,9 +792,9 @@ begin
+   return jsonb_build_object(
+     'alreadyProcessed', false,
+     'action', v_action,
+-    'amount', p_amount,
+-    'balanceBefore', v_balance_before,
+-    'balanceAfter', v_balance_after,
++    'amount', p_amount::text,
++    'balanceBefore', v_balance_before::text,
++    'balanceAfter', v_balance_after::text,
+     'adminLogId', v_log_id,
+     'transaction', private.admin_transaction_payload(v_transaction_id)
+   );
+@@ -1013,11 +1028,6 @@ begin
+     from public.member m
+    where m.user_id = any(v_member_ids);
+ 
+-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, before_data, after_data, metadata)
+-  values (v_admin.user_id, 'chat.room_create', v_room_id, '{}'::jsonb,
+-          private.admin_chat_room_payload(v_room_id, v_admin.user_id),
+-          jsonb_build_object('memberIds', to_jsonb(v_member_ids)));
+-
+   return private.admin_chat_room_payload(v_room_id, v_admin.user_id);
+ end;
+ $$;
+@@ -1032,7 +1042,6 @@ as $$
+ declare
+   v_admin public.member%rowtype;
+   v_title text := trim(coalesce(p_title, ''));
+-  v_before jsonb;
+   v_after jsonb;
+ begin
+   v_admin := private.require_admin();
+@@ -1040,8 +1049,10 @@ begin
+     raise exception using errcode = 'P0001', message = 'CHAT_ROOM_TITLE_REQUIRED';
+   end if;
+   v_title := left(v_title, 80);
+-  v_before := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
+-  if v_before is null or v_before = 'null'::jsonb then
++  if not exists (
++    select 1 from public.chat_rooms cr
++     where cr.id = p_room_id and cr.room_type = 'group'
++  ) then
+     raise exception using errcode = 'P0001', message = 'CHAT_ROOM_NOT_FOUND';
+   end if;
+ 
+@@ -1052,8 +1063,6 @@ begin
+      and cr.room_type = 'group';
+ 
+   v_after := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
+-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, before_data, after_data)
+-  values (v_admin.user_id, 'chat.room_update', p_room_id, v_before, v_after);
+   return v_after;
+ end;
+ $$;
+@@ -1072,7 +1081,6 @@ declare
+   v_valid_count integer;
+   v_current_count integer;
+   v_new_count integer;
+-  v_before jsonb;
+   v_after jsonb;
+ begin
+   v_admin := private.require_admin();
+@@ -1113,8 +1121,6 @@ begin
+     raise exception using errcode = 'P0001', message = 'CHAT_ROOM_MEMBER_LIMIT_EXCEEDED';
+   end if;
+ 
+-  v_before := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
+-
+   insert into public.chat_members(room_id, user_id, role, last_read_message_id, unread_count, joined_at, left_at)
+   select p_room_id, m.user_id,
+          case when m.role in ('admin', 'super_admin') then 'admin' else 'member' end,
+@@ -1135,9 +1141,6 @@ begin
+     left_at = null;
+ 
+   v_after := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
+-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, before_data, after_data, metadata)
+-  values (v_admin.user_id, 'chat.member_add', p_room_id, v_before, v_after,
+-          jsonb_build_object('memberIds', to_jsonb(v_member_ids), 'addedOrReactivatedCount', v_new_count));
+   return v_after;
+ end;
+ $$;
+@@ -1160,7 +1163,6 @@ declare
+   v_active_remove_count integer;
+   v_current_count integer;
+   v_remaining_admin_count integer;
+-  v_before jsonb;
+   v_after jsonb;
+ begin
+   v_admin := private.require_admin();
+@@ -1199,7 +1201,6 @@ begin
+     raise exception using errcode = 'P0001', message = 'CHAT_LAST_ADMIN_REQUIRED';
+   end if;
+ 
+-  v_before := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
+   update public.chat_members cm
+      set left_at = now(), unread_count = 0
+    where cm.room_id = p_room_id
+@@ -1207,9 +1208,6 @@ begin
+      and cm.left_at is null;
+ 
+   v_after := private.admin_chat_room_payload(p_room_id, v_admin.user_id);
+-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, reason, before_data, after_data, metadata)
+-  values (v_admin.user_id, 'chat.member_remove', p_room_id, nullif(trim(coalesce(p_reason, '')), ''),
+-          v_before, v_after, jsonb_build_object('memberIds', to_jsonb(v_member_ids), 'removedCount', v_active_remove_count));
+   return v_after;
+ end;
+ $$;
+@@ -1257,8 +1255,6 @@ begin
+     role = 'admin', last_read_message_id = excluded.last_read_message_id,
+     unread_count = 0, joined_at = now(), left_at = null;
+ 
+-  insert into public.admin_action_logs(actor_user_id, action_type, target_room_id, metadata)
+-  values (v_admin.user_id, 'chat.admin_join', p_room_id, jsonb_build_object('memberId', v_admin.mb_id));
+   return private.admin_chat_room_payload(p_room_id, v_admin.user_id);
+ end;
+ $$;
