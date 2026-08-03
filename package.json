@@ -1,0 +1,22 @@
+{
+  "name": "sto-network-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "STO Network Product 관리자 웹",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "start": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.2",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "vite": "latest"
+  },
+  "license": "UNLICENSED"
+}
