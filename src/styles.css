@@ -77,9 +77,14 @@ small { color: var(--muted); }
 .field-error, .form-error { color: #dc2626; font-size: 13px; }
 .form-error { margin: 12px 0 0; }
 .helper-text { display: block; margin-top: 8px; }
+.field-help { margin: 8px 0 0; color: #6b7280; font-size: 12px; line-height: 1.5; }
+.field-group { display: grid; gap: 12px; margin-top: 16px; }
 
 .filter-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 14px; align-items: end; }
 .filter-actions { display: flex; gap: 8px; align-items: flex-end; }
+.row-actions { display: flex; gap: 6px; align-items: center; }
+.modal-form { display: grid; gap: 14px; }
+.check-field { display: inline-flex; align-items: center; gap: 8px; color: #374151; font-size: 13px; font-weight: 700; }
 .toolbar { display: grid; grid-template-columns: minmax(300px, 540px) auto; gap: 10px; align-items: end; }
 
 .table-wrap { width: 100%; overflow-x: auto; }

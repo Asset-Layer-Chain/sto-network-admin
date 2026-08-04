@@ -8,6 +8,7 @@ import { TransactionListPage } from './pages/TransactionListPage.jsx';
 import { ChatRoomListPage } from './pages/ChatRoomListPage.jsx';
 import { ChatRoomDetailPage } from './pages/ChatRoomDetailPage.jsx';
 import { AdminLogPage } from './pages/AdminLogPage.jsx';
+import { ReasonPresetPage } from './pages/ReasonPresetPage.jsx';
 import { navigate, useLocation } from './router.js';
 
 function AccessDenied() {
@@ -34,6 +35,7 @@ export function App() {
   if (pathname === '/' || pathname === '/auth/callback') return <div className="center-page"><Loading /></div>;
   if (pathname === '/members') return <MemberListPage />;
   if (pathname === '/transactions') return <TransactionListPage />;
+  if (pathname === '/transaction-reasons') return <ReasonPresetPage />;
   if (pathname === '/chats') return <ChatRoomListPage />;
   if (pathname === '/admin-logs') return <AdminLogPage />;
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { adjustStoc } from '../api/adminTransactionApi.js';
+import { listReasonPresets } from '../api/adminReasonPresetApi.js';
 import { createIdempotencyKey } from '../api/rpcClient.js';
 import {
   STOC_MAX_AMOUNT,
@@ -9,19 +10,13 @@ import {
   formatScaledDecimal,
   isValidStocAmount,
 } from '../utils/decimal.js';
-import { Button, Input, Modal, Textarea } from './Common.jsx';
+import { Button, Input, Loading, Modal, Select, Textarea } from './Common.jsx';
 import { useToast } from './Toast.jsx';
 
 const ACTIONS = {
   deposit: { title: 'STOC 지급', submit: '지급 확정', sign: 1 },
   withdrawal: { title: 'STOC 차감', submit: '차감 확정', sign: -1 },
   airdrop: { title: 'STOC 에어드랍', submit: '에어드랍 확정', sign: 1 },
-};
-
-const DEFAULT_REASON_BY_ACTION = {
-  deposit: 'STOC 프리세일 참여',
-  withdrawal: '',
-  airdrop: '에어드랍',
 };
 
 function normalizeAmountInput(value) {
@@ -43,11 +38,19 @@ function normalizeAmountInput(value) {
     : normalizedInteger;
 }
 
+function pickInitialPreset(presets) {
+  if (!presets.length) return null;
+  return presets.find((item) => item.isDefault) || presets[0];
+}
+
 export function AssetAdjustmentModal({ open, member, action, onClose, onCompleted }) {
   const { admin } = useAuth();
   const config = ACTIONS[action] || ACTIONS.deposit;
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [reasonPresets, setReasonPresets] = useState([]);
+  const [selectedReasonPresetId, setSelectedReasonPresetId] = useState('custom');
+  const [loadingReasonPresets, setLoadingReasonPresets] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [idempotencyKey, setIdempotencyKey] = useState('');
@@ -55,10 +58,33 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
 
   useEffect(() => {
     if (!open) return;
+    let ignore = false;
     setAmount('');
-    setReason(DEFAULT_REASON_BY_ACTION[action] ?? '');
+    setReason('');
+    setReasonPresets([]);
+    setSelectedReasonPresetId('custom');
     setError('');
     setIdempotencyKey(createIdempotencyKey(`admin-${action}`));
+    setLoadingReasonPresets(true);
+
+    listReasonPresets({ action })
+      .then((items) => {
+        if (ignore) return;
+        setReasonPresets(items);
+        const initialPreset = pickInitialPreset(items);
+        if (initialPreset) {
+          setSelectedReasonPresetId(initialPreset.id);
+          setReason(initialPreset.reasonText);
+        }
+      })
+      .catch((requestError) => {
+        if (!ignore) setError(requestError.message);
+      })
+      .finally(() => {
+        if (!ignore) setLoadingReasonPresets(false);
+      });
+
+    return () => { ignore = true; };
   }, [open, action]);
 
   const currentBalance = String(member?.internalStocBalance ?? member?.internal_stoc_balance ?? '0');
@@ -69,6 +95,12 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
   const expectedIsNegative = expectedScaled !== null && expectedScaled < 0n;
   const memberStatus = String(member?.status || '');
   const requiresStatusWarning = memberStatus === 'pending' || memberStatus === 'suspended';
+
+  const selectReasonPreset = (presetId) => {
+    setSelectedReasonPresetId(presetId);
+    const preset = reasonPresets.find((item) => item.id === presetId);
+    if (preset) setReason(preset.reasonText);
+  };
 
   const submit = async () => {
     const permissionKey = {
@@ -138,7 +170,32 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
         placeholder="0.00000000"
         autoComplete="off"
       />
-      <Textarea label="처리 사유" rows="4" maxLength="300" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="감사 로그와 거래 메타데이터에 저장됩니다." />
+      <div className="field-group">
+        {loadingReasonPresets ? <Loading label="처리 사유 목록을 불러오는 중입니다." /> : null}
+        {!loadingReasonPresets ? (
+          <Select
+            label="처리 사유 프리셋"
+            value={selectedReasonPresetId}
+            onChange={(e) => selectReasonPreset(e.target.value)}
+          >
+            {reasonPresets.map((preset) => (
+              <option key={preset.id} value={preset.id}>{preset.label}</option>
+            ))}
+            <option value="custom">직접 입력</option>
+          </Select>
+        ) : null}
+        {!loadingReasonPresets && !reasonPresets.length ? (
+          <p className="field-help">등록된 처리 사유가 없습니다. 직접 입력해주세요.</p>
+        ) : null}
+        <Textarea
+          label="처리 사유 상세"
+          rows="4"
+          maxLength="300"
+          value={reason}
+          onChange={(e) => { setReason(e.target.value); setSelectedReasonPresetId('custom'); }}
+          placeholder="감사 로그와 거래 메타데이터에 저장됩니다."
+        />
+      </div>
       {error ? <p className="form-error">{error}</p> : null}
     </Modal>
   );

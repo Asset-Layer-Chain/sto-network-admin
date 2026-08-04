@@ -1,0 +1,891 @@
+diff --git a/src/App.jsx b/src/App.jsx
+index 057471b..c94f07e 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -8,6 +8,7 @@ import { TransactionListPage } from './pages/TransactionListPage.jsx';
+ import { ChatRoomListPage } from './pages/ChatRoomListPage.jsx';
+ import { ChatRoomDetailPage } from './pages/ChatRoomDetailPage.jsx';
+ import { AdminLogPage } from './pages/AdminLogPage.jsx';
++import { ReasonPresetPage } from './pages/ReasonPresetPage.jsx';
+ import { navigate, useLocation } from './router.js';
+ 
+ function AccessDenied() {
+@@ -34,6 +35,7 @@ export function App() {
+   if (pathname === '/' || pathname === '/auth/callback') return <div className="center-page"><Loading /></div>;
+   if (pathname === '/members') return <MemberListPage />;
+   if (pathname === '/transactions') return <TransactionListPage />;
++  if (pathname === '/transaction-reasons') return <ReasonPresetPage />;
+   if (pathname === '/chats') return <ChatRoomListPage />;
+   if (pathname === '/admin-logs') return <AdminLogPage />;
+ 
+diff --git a/src/api/adminReasonPresetApi.js b/src/api/adminReasonPresetApi.js
+new file mode 100644
+index 0000000..81fa14e
+--- /dev/null
++++ b/src/api/adminReasonPresetApi.js
+@@ -0,0 +1,54 @@
++import { callRpc } from './rpcClient.js';
++
++function normalizePreset(item = {}) {
++  return {
++    id: item.id,
++    action: item.action,
++    label: item.label,
++    reasonText: item.reasonText || item.reason_text || '',
++    sortOrder: Number(item.sortOrder ?? item.sort_order ?? 0),
++    isDefault: Boolean(item.isDefault ?? item.is_default),
++    isActive: item.isActive ?? item.is_active ?? true,
++    createdAt: item.createdAt || item.created_at || null,
++    updatedAt: item.updatedAt || item.updated_at || null,
++    createdBy: item.createdBy || item.created_by || null,
++    updatedBy: item.updatedBy || item.updated_by || null,
++  };
++}
++
++export async function listReasonPresets({ action = null, includeInactive = false } = {}) {
++  const result = await callRpc('rpc_admin_list_transaction_reason_presets', {
++    p_action: action || null,
++    p_include_inactive: Boolean(includeInactive),
++  });
++  return Array.isArray(result) ? result.map(normalizePreset) : [];
++}
++
++export async function createReasonPreset({ action, label, reasonText, sortOrder = 0, isDefault = false }) {
++  const result = await callRpc('rpc_admin_create_transaction_reason_preset', {
++    p_action: action,
++    p_label: label,
++    p_reason_text: reasonText,
++    p_sort_order: Number(sortOrder || 0),
++    p_is_default: Boolean(isDefault),
++  });
++  return normalizePreset(result);
++}
++
++export async function updateReasonPreset({ id, action, label, reasonText, sortOrder = 0, isDefault = false, isActive = true }) {
++  const result = await callRpc('rpc_admin_update_transaction_reason_preset', {
++    p_id: id,
++    p_action: action,
++    p_label: label,
++    p_reason_text: reasonText,
++    p_sort_order: Number(sortOrder || 0),
++    p_is_default: Boolean(isDefault),
++    p_is_active: Boolean(isActive),
++  });
++  return normalizePreset(result);
++}
++
++export async function deleteReasonPreset(id) {
++  const result = await callRpc('rpc_admin_delete_transaction_reason_preset', { p_id: id });
++  return normalizePreset(result);
++}
+diff --git a/src/api/rpcClient.js b/src/api/rpcClient.js
+index e8c44a8..af853f3 100644
+--- a/src/api/rpcClient.js
++++ b/src/api/rpcClient.js
+@@ -13,6 +13,11 @@ const ERROR_MESSAGES = {
+   INVALID_AMOUNT_SCALE: '금액은 소수점 8자리 이내로 입력해주세요.',
+   ADMIN_AMOUNT_LIMIT_EXCEEDED: '한 번에 처리할 수 있는 최대 금액을 초과했습니다.',
+   ADMIN_REASON_REQUIRED: '처리 사유를 입력해주세요.',
++  ADMIN_REASON_PRESET_MANAGE_PERMISSION_DENIED: '센터장 이상 관리자만 처리 사유를 관리할 수 있습니다.',
++  INVALID_ADMIN_REASON_PRESET_ACTION: '지원하지 않는 처리 사유 유형입니다.',
++  ADMIN_REASON_PRESET_LABEL_REQUIRED: '처리 사유 표시명을 입력해주세요.',
++  ADMIN_REASON_PRESET_TEXT_REQUIRED: '처리 사유 문구를 입력해주세요.',
++  ADMIN_REASON_PRESET_NOT_FOUND: '처리 사유를 찾을 수 없습니다.',
+   IDEMPOTENCY_KEY_REQUIRED: '요청 식별값이 없습니다.',
+   INSUFFICIENT_BALANCE: '회원의 보유 잔액이 부족합니다.',
+   CHAT_ROOM_NOT_FOUND: '채팅방을 찾을 수 없습니다.',
+diff --git a/src/components/AdminLayout.jsx b/src/components/AdminLayout.jsx
+index 0f00aee..9cd7100 100644
+--- a/src/components/AdminLayout.jsx
++++ b/src/components/AdminLayout.jsx
+@@ -6,6 +6,7 @@ import { Button, StatusBadge } from './Common.jsx';
+ const menus = [
+   { path: '/members', label: '회원 관리', key: 'members' },
+   { path: '/transactions', label: '거래 내역', key: 'transactions' },
++  { path: '/transaction-reasons', label: '처리 사유', key: 'reason-presets', permission: 'reasonPresetManage' },
+   { path: '/chats', label: '채팅 관리', key: 'chats' },
+   { path: '/admin-logs', label: '관리자 로그', key: 'admin-logs' },
+ ];
+@@ -21,7 +22,7 @@ export function AdminLayout({ active, children }) {
+           <div><strong>STO Network</strong><small>Product Admin</small></div>
+         </div>
+         <nav className="sidebar-nav">
+-          {menus.map((menu) => (
++          {menus.filter((menu) => !menu.permission || admin?.permissions?.[menu.permission]).map((menu) => (
+             <button key={menu.key} className={active === menu.key ? 'active' : ''} onClick={() => navigate(menu.path)}>
+               {menu.label}
+             </button>
+diff --git a/src/components/AssetAdjustmentModal.jsx b/src/components/AssetAdjustmentModal.jsx
+index ca76c6e..bfbd5d8 100644
+--- a/src/components/AssetAdjustmentModal.jsx
++++ b/src/components/AssetAdjustmentModal.jsx
+@@ -1,6 +1,7 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { useAuth } from '../auth/AuthContext.jsx';
+ import { adjustStoc } from '../api/adminTransactionApi.js';
++import { listReasonPresets } from '../api/adminReasonPresetApi.js';
+ import { createIdempotencyKey } from '../api/rpcClient.js';
+ import {
+   STOC_MAX_AMOUNT,
+@@ -9,7 +10,7 @@ import {
+   formatScaledDecimal,
+   isValidStocAmount,
+ } from '../utils/decimal.js';
+-import { Button, Input, Modal, Textarea } from './Common.jsx';
++import { Button, Input, Loading, Modal, Select, Textarea } from './Common.jsx';
+ import { useToast } from './Toast.jsx';
+ 
+ const ACTIONS = {
+@@ -18,12 +19,6 @@ const ACTIONS = {
+   airdrop: { title: 'STOC 에어드랍', submit: '에어드랍 확정', sign: 1 },
+ };
+ 
+-const DEFAULT_REASON_BY_ACTION = {
+-  deposit: 'STOC 프리세일 참여',
+-  withdrawal: '',
+-  airdrop: '에어드랍',
+-};
+-
+ function normalizeAmountInput(value) {
+   const cleaned = String(value ?? '')
+     .replace(/,/g, '')
+@@ -43,11 +38,19 @@ function normalizeAmountInput(value) {
+     : normalizedInteger;
+ }
+ 
++function pickInitialPreset(presets) {
++  if (!presets.length) return null;
++  return presets.find((item) => item.isDefault) || presets[0];
++}
++
+ export function AssetAdjustmentModal({ open, member, action, onClose, onCompleted }) {
+   const { admin } = useAuth();
+   const config = ACTIONS[action] || ACTIONS.deposit;
+   const [amount, setAmount] = useState('');
+   const [reason, setReason] = useState('');
++  const [reasonPresets, setReasonPresets] = useState([]);
++  const [selectedReasonPresetId, setSelectedReasonPresetId] = useState('custom');
++  const [loadingReasonPresets, setLoadingReasonPresets] = useState(false);
+   const [submitting, setSubmitting] = useState(false);
+   const [error, setError] = useState('');
+   const [idempotencyKey, setIdempotencyKey] = useState('');
+@@ -55,10 +58,33 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
+ 
+   useEffect(() => {
+     if (!open) return;
++    let ignore = false;
+     setAmount('');
+-    setReason(DEFAULT_REASON_BY_ACTION[action] ?? '');
++    setReason('');
++    setReasonPresets([]);
++    setSelectedReasonPresetId('custom');
+     setError('');
+     setIdempotencyKey(createIdempotencyKey(`admin-${action}`));
++    setLoadingReasonPresets(true);
++
++    listReasonPresets({ action })
++      .then((items) => {
++        if (ignore) return;
++        setReasonPresets(items);
++        const initialPreset = pickInitialPreset(items);
++        if (initialPreset) {
++          setSelectedReasonPresetId(initialPreset.id);
++          setReason(initialPreset.reasonText);
++        }
++      })
++      .catch((requestError) => {
++        if (!ignore) setError(requestError.message);
++      })
++      .finally(() => {
++        if (!ignore) setLoadingReasonPresets(false);
++      });
++
++    return () => { ignore = true; };
+   }, [open, action]);
+ 
+   const currentBalance = String(member?.internalStocBalance ?? member?.internal_stoc_balance ?? '0');
+@@ -70,6 +96,12 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
+   const memberStatus = String(member?.status || '');
+   const requiresStatusWarning = memberStatus === 'pending' || memberStatus === 'suspended';
+ 
++  const selectReasonPreset = (presetId) => {
++    setSelectedReasonPresetId(presetId);
++    const preset = reasonPresets.find((item) => item.id === presetId);
++    if (preset) setReason(preset.reasonText);
++  };
++
+   const submit = async () => {
+     const permissionKey = {
+       deposit: 'assetDeposit',
+@@ -138,7 +170,32 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
+         placeholder="0.00000000"
+         autoComplete="off"
+       />
+-      <Textarea label="처리 사유" rows="4" maxLength="300" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="감사 로그와 거래 메타데이터에 저장됩니다." />
++      <div className="field-group">
++        {loadingReasonPresets ? <Loading label="처리 사유 목록을 불러오는 중입니다." /> : null}
++        {!loadingReasonPresets ? (
++          <Select
++            label="처리 사유 프리셋"
++            value={selectedReasonPresetId}
++            onChange={(e) => selectReasonPreset(e.target.value)}
++          >
++            {reasonPresets.map((preset) => (
++              <option key={preset.id} value={preset.id}>{preset.label}</option>
++            ))}
++            <option value="custom">직접 입력</option>
++          </Select>
++        ) : null}
++        {!loadingReasonPresets && !reasonPresets.length ? (
++          <p className="field-help">등록된 처리 사유가 없습니다. 직접 입력해주세요.</p>
++        ) : null}
++        <Textarea
++          label="처리 사유 상세"
++          rows="4"
++          maxLength="300"
++          value={reason}
++          onChange={(e) => { setReason(e.target.value); setSelectedReasonPresetId('custom'); }}
++          placeholder="감사 로그와 거래 메타데이터에 저장됩니다."
++        />
++      </div>
+       {error ? <p className="form-error">{error}</p> : null}
+     </Modal>
+   );
+diff --git a/src/pages/ReasonPresetPage.jsx b/src/pages/ReasonPresetPage.jsx
+new file mode 100644
+index 0000000..2610931
+--- /dev/null
++++ b/src/pages/ReasonPresetPage.jsx
+@@ -0,0 +1,188 @@
++import React, { useCallback, useEffect, useMemo, useState } from 'react';
++import {
++  createReasonPreset,
++  deleteReasonPreset,
++  listReasonPresets,
++  updateReasonPreset,
++} from '../api/adminReasonPresetApi.js';
++import { useAuth } from '../auth/AuthContext.jsx';
++import { AdminLayout } from '../components/AdminLayout.jsx';
++import { Button, Card, EmptyState, Input, Loading, Modal, PageHeader, Select, StatusBadge, Textarea } from '../components/Common.jsx';
++import { useToast } from '../components/Toast.jsx';
++import { formatDateTime } from '../utils/format.js';
++
++const ACTION_LABELS = {
++  deposit: '지급',
++  withdrawal: '차감',
++  airdrop: '에어드랍',
++};
++
++const initialForm = {
++  id: null,
++  action: 'airdrop',
++  label: '',
++  reasonText: '',
++  sortOrder: 0,
++  isDefault: false,
++  isActive: true,
++};
++
++function ReasonPresetFormModal({ open, initialValue, onClose, onSubmit, submitting }) {
++  const [form, setForm] = useState(initialForm);
++  const editing = Boolean(initialValue?.id);
++
++  useEffect(() => {
++    if (!open) return;
++    setForm({ ...initialForm, ...(initialValue || {}) });
++  }, [open, initialValue]);
++
++  const submit = (event) => {
++    event.preventDefault();
++    onSubmit?.(form);
++  };
++
++  return (
++    <Modal
++      open={open}
++      title={editing ? '처리 사유 수정' : '처리 사유 추가'}
++      onClose={submitting ? undefined : onClose}
++      footer={<><Button variant="secondary" onClick={onClose} disabled={submitting}>취소</Button><Button onClick={submit} disabled={submitting}>{submitting ? '저장 중' : '저장'}</Button></>}
++    >
++      <form className="modal-form" onSubmit={submit}>
++        <Select label="처리 유형" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value })}>
++          <option value="airdrop">에어드랍</option>
++          <option value="withdrawal">차감</option>
++          <option value="deposit">지급</option>
++        </Select>
++        <Input label="표시명" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength="80" placeholder="드롭다운에 표시될 이름" />
++        <Textarea label="처리 사유 문구" rows="4" value={form.reasonText} onChange={(e) => setForm({ ...form, reasonText: e.target.value })} maxLength="300" placeholder="거래 설명과 감사 로그에 저장될 문구" />
++        <Input label="정렬 순서" type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} />
++        <label className="check-field"><input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} /> 기본값으로 사용</label>
++        {editing ? <label className="check-field"><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> 활성 상태</label> : null}
++      </form>
++    </Modal>
++  );
++}
++
++export function ReasonPresetPage() {
++  const { admin } = useAuth();
++  const canManage = Boolean(admin?.permissions?.reasonPresetManage);
++  const [actionFilter, setActionFilter] = useState('');
++  const [items, setItems] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [submitting, setSubmitting] = useState(false);
++  const [error, setError] = useState('');
++  const [modalValue, setModalValue] = useState(null);
++  const { showToast } = useToast();
++
++  const load = useCallback(async () => {
++    setLoading(true);
++    setError('');
++    try {
++      setItems(await listReasonPresets({ action: actionFilter || null }));
++    } catch (requestError) {
++      setError(requestError.message);
++    } finally {
++      setLoading(false);
++    }
++  }, [actionFilter]);
++
++  useEffect(() => { load(); }, [load]);
++
++  const grouped = useMemo(() => items, [items]);
++
++  const save = async (form) => {
++    setSubmitting(true);
++    setError('');
++    try {
++      if (form.id) {
++        await updateReasonPreset(form);
++        showToast('처리 사유를 수정했습니다.');
++      } else {
++        await createReasonPreset(form);
++        showToast('처리 사유를 추가했습니다.');
++      }
++      setModalValue(null);
++      await load();
++    } catch (requestError) {
++      setError(requestError.message);
++    } finally {
++      setSubmitting(false);
++    }
++  };
++
++  const remove = async (item) => {
++    if (!window.confirm(`'${item.label}' 처리 사유를 비활성화할까요?`)) return;
++    setSubmitting(true);
++    setError('');
++    try {
++      await deleteReasonPreset(item.id);
++      showToast('처리 사유를 비활성화했습니다.');
++      await load();
++    } catch (requestError) {
++      setError(requestError.message);
++    } finally {
++      setSubmitting(false);
++    }
++  };
++
++  if (!canManage) {
++    return (
++      <AdminLayout active="reason-presets">
++        <PageHeader title="처리 사유 관리" description="센터장 이상 관리자만 처리 사유를 추가·수정·삭제할 수 있습니다." />
++        <Card><EmptyState title="권한이 없습니다." description="처리 사유 관리는 센터장 이상 등급에서 사용할 수 있습니다." /></Card>
++      </AdminLayout>
++    );
++  }
++
++  return (
++    <AdminLayout active="reason-presets">
++      <PageHeader
++        title="처리 사유 관리"
++        description="자산 지급·차감·에어드랍 모달에서 사용할 처리 사유 프리셋을 관리합니다. 삭제는 비활성화로 처리됩니다."
++        actions={<Button onClick={() => setModalValue(initialForm)}>처리 사유 추가</Button>}
++      />
++      <Card>
++        <div className="toolbar">
++          <Select label="처리 유형" value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
++            <option value="">전체</option>
++            <option value="airdrop">에어드랍</option>
++            <option value="withdrawal">차감</option>
++            <option value="deposit">지급</option>
++          </Select>
++          <div className="filter-actions"><Button variant="secondary" onClick={load}>새로고침</Button></div>
++        </div>
++      </Card>
++      <Card className="table-card">
++        {loading ? <Loading /> : null}
++        {!loading && error ? <EmptyState title={error} /> : null}
++        {!loading && !error && !grouped.length ? <EmptyState title="등록된 처리 사유가 없습니다." /> : null}
++        {!loading && !error && grouped.length ? (
++          <div className="table-wrap">
++            <table>
++              <thead><tr><th>처리 유형</th><th>표시명</th><th>처리 사유 문구</th><th>정렬</th><th>기본값</th><th>수정일</th><th>관리</th></tr></thead>
++              <tbody>{grouped.map((item) => (
++                <tr key={item.id}>
++                  <td><StatusBadge value={item.action} /><small>{ACTION_LABELS[item.action] || item.action}</small></td>
++                  <td><strong>{item.label}</strong></td>
++                  <td>{item.reasonText}</td>
++                  <td>{item.sortOrder}</td>
++                  <td>{item.isDefault ? <StatusBadge value="active" /> : '-'}</td>
++                  <td>{formatDateTime(item.updatedAt || item.createdAt)}</td>
++                  <td><div className="row-actions"><Button size="sm" variant="secondary" onClick={() => setModalValue(item)}>수정</Button><Button size="sm" variant="danger" onClick={() => remove(item)} disabled={submitting}>삭제</Button></div></td>
++                </tr>
++              ))}</tbody>
++            </table>
++          </div>
++        ) : null}
++      </Card>
++      <ReasonPresetFormModal
++        open={Boolean(modalValue)}
++        initialValue={modalValue}
++        onClose={() => setModalValue(null)}
++        onSubmit={save}
++        submitting={submitting}
++      />
++    </AdminLayout>
++  );
++}
+diff --git a/src/styles.css b/src/styles.css
+index 4b55616..77dfd87 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -77,9 +77,14 @@ small { color: var(--muted); }
+ .field-error, .form-error { color: #dc2626; font-size: 13px; }
+ .form-error { margin: 12px 0 0; }
+ .helper-text { display: block; margin-top: 8px; }
++.field-help { margin: 8px 0 0; color: #6b7280; font-size: 12px; line-height: 1.5; }
++.field-group { display: grid; gap: 12px; margin-top: 16px; }
+ 
+ .filter-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 14px; align-items: end; }
+ .filter-actions { display: flex; gap: 8px; align-items: flex-end; }
++.row-actions { display: flex; gap: 6px; align-items: center; }
++.modal-form { display: grid; gap: 14px; }
++.check-field { display: inline-flex; align-items: center; gap: 8px; color: #374151; font-size: 13px; font-weight: 700; }
+ .toolbar { display: grid; grid-template-columns: minmax(300px, 540px) auto; gap: 10px; align-items: end; }
+ 
+ .table-wrap { width: 100%; overflow-x: auto; }
+diff --git a/supabase/migrations/202608030300_transaction_reason_presets.sql b/supabase/migrations/202608030300_transaction_reason_presets.sql
+new file mode 100644
+index 0000000..90bf9d1
+--- /dev/null
++++ b/supabase/migrations/202608030300_transaction_reason_presets.sql
+@@ -0,0 +1,419 @@
++-- STO Network Product Admin - 자산 처리 사유 프리셋
++-- 처리 사유 프리셋은 센터장(center_director) 이상만 추가·수정·삭제할 수 있다.
++
++create table if not exists public.admin_transaction_reason_presets (
++  id uuid primary key default gen_random_uuid(),
++  action text not null check (action in ('deposit', 'withdrawal', 'airdrop')),
++  label text not null,
++  reason_text text not null,
++  sort_order integer not null default 0,
++  is_default boolean not null default false,
++  is_active boolean not null default true,
++  created_by uuid references public.member(user_id),
++  updated_by uuid references public.member(user_id),
++  created_at timestamptz not null default now(),
++  updated_at timestamptz not null default now()
++);
++
++create index if not exists admin_transaction_reason_presets_action_active_idx
++  on public.admin_transaction_reason_presets(action, is_active, sort_order, label);
++
++create unique index if not exists admin_transaction_reason_presets_default_uidx
++  on public.admin_transaction_reason_presets(action)
++  where is_default and is_active;
++
++alter table public.admin_transaction_reason_presets enable row level security;
++revoke all on public.admin_transaction_reason_presets from public, anon, authenticated;
++
++create or replace function private.touch_admin_transaction_reason_presets_updated_at()
++returns trigger
++language plpgsql
++security definer
++set search_path = ''
++as $$
++begin
++  new.updated_at := now();
++  return new;
++end;
++$$;
++
++revoke all on function private.touch_admin_transaction_reason_presets_updated_at() from public, anon, authenticated;
++drop trigger if exists admin_transaction_reason_presets_touch_updated_at on public.admin_transaction_reason_presets;
++create trigger admin_transaction_reason_presets_touch_updated_at
++before update on public.admin_transaction_reason_presets
++for each row execute function private.touch_admin_transaction_reason_presets_updated_at();
++
++create or replace function private.require_admin_reason_preset_manage_permission(
++  p_user_id uuid,
++  p_member_role text
++)
++returns text
++language plpgsql
++stable
++security definer
++set search_path = ''
++as $$
++declare
++  v_grade text;
++begin
++  v_grade := private.admin_grade_for(p_user_id, p_member_role);
++
++  if v_grade not in ('center_director', 'headquarters') then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_PRESET_MANAGE_PERMISSION_DENIED';
++  end if;
++
++  return v_grade;
++end;
++$$;
++
++create or replace function private.validate_admin_reason_preset_action(p_action text)
++returns text
++language plpgsql
++immutable
++security definer
++set search_path = ''
++as $$
++declare
++  v_action text := lower(trim(coalesce(p_action, '')));
++begin
++  if v_action not in ('deposit', 'withdrawal', 'airdrop') then
++    raise exception using errcode = 'P0001', message = 'INVALID_ADMIN_REASON_PRESET_ACTION';
++  end if;
++  return v_action;
++end;
++$$;
++
++create or replace function private.admin_reason_preset_payload(p_id uuid)
++returns jsonb
++language sql
++stable
++security definer
++set search_path = ''
++as $$
++  select jsonb_build_object(
++    'id', p.id,
++    'action', p.action,
++    'label', p.label,
++    'reasonText', p.reason_text,
++    'sortOrder', p.sort_order,
++    'isDefault', p.is_default,
++    'isActive', p.is_active,
++    'createdBy', p.created_by,
++    'updatedBy', p.updated_by,
++    'createdAt', p.created_at,
++    'updatedAt', p.updated_at
++  )
++    from public.admin_transaction_reason_presets p
++   where p.id = p_id;
++$$;
++
++revoke all on function private.require_admin_reason_preset_manage_permission(uuid, text) from public, anon, authenticated;
++revoke all on function private.validate_admin_reason_preset_action(text) from public, anon, authenticated;
++revoke all on function private.admin_reason_preset_payload(uuid) from public, anon, authenticated;
++
++create or replace function public.rpc_admin_get_session()
++returns jsonb
++language plpgsql
++stable
++security definer
++set search_path = ''
++as $$
++declare
++  v_admin public.member%rowtype;
++  v_grade text;
++  v_grade_label text;
++begin
++  v_admin := private.require_admin();
++  v_grade := private.admin_grade_for(v_admin.user_id, v_admin.role);
++  v_grade_label := case v_grade
++    when 'team_lead' then '팀장급'
++    when 'center_director' then '센터장'
++    when 'headquarters' then '본부'
++    else '자산 권한 미설정'
++  end;
++
++  return jsonb_build_object(
++    'userId', v_admin.user_id,
++    'memberNo', v_admin.mb_no,
++    'memberId', v_admin.mb_id,
++    'name', v_admin.mb_name,
++    'email', v_admin.mb_email,
++    'profile', v_admin.mb_profile,
++    'role', v_admin.role,
++    'adminGrade', v_grade,
++    'adminGradeLabel', v_grade_label,
++    'permissions', jsonb_build_object(
++      'memberRead', true,
++      'memberListBrowse', v_grade is distinct from 'team_lead',
++      'memberSearch', true,
++      'assetDeposit', v_grade = 'headquarters',
++      'assetWithdrawal', v_grade in ('center_director', 'headquarters'),
++      'assetAirdrop', v_grade in ('team_lead', 'center_director', 'headquarters'),
++      'reasonPresetManage', v_grade in ('center_director', 'headquarters'),
++      'chatManage', true,
++      'adminLogRead', true
++    )
++  );
++end;
++$$;
++
++create or replace function public.rpc_admin_list_transaction_reason_presets(
++  p_action text default null,
++  p_include_inactive boolean default false
++)
++returns jsonb
++language plpgsql
++stable
++security definer
++set search_path = ''
++as $$
++declare
++  v_admin public.member%rowtype;
++  v_action text := null;
++  v_items jsonb;
++begin
++  v_admin := private.require_admin();
++
++  if nullif(trim(coalesce(p_action, '')), '') is not null then
++    v_action := private.validate_admin_reason_preset_action(p_action);
++  end if;
++
++  select coalesce(jsonb_agg(jsonb_build_object(
++    'id', p.id,
++    'action', p.action,
++    'label', p.label,
++    'reasonText', p.reason_text,
++    'sortOrder', p.sort_order,
++    'isDefault', p.is_default,
++    'isActive', p.is_active,
++    'createdBy', p.created_by,
++    'updatedBy', p.updated_by,
++    'createdAt', p.created_at,
++    'updatedAt', p.updated_at
++  ) order by p.action, p.sort_order, p.label), '[]'::jsonb)
++    into v_items
++    from public.admin_transaction_reason_presets p
++   where (v_action is null or p.action = v_action)
++     and (p_include_inactive or p.is_active);
++
++  return coalesce(v_items, '[]'::jsonb);
++end;
++$$;
++
++create or replace function public.rpc_admin_create_transaction_reason_preset(
++  p_action text,
++  p_label text,
++  p_reason_text text,
++  p_sort_order integer default 0,
++  p_is_default boolean default false
++)
++returns jsonb
++language plpgsql
++volatile
++security definer
++set search_path = ''
++as $$
++declare
++  v_admin public.member%rowtype;
++  v_grade text;
++  v_action text;
++  v_label text := trim(coalesce(p_label, ''));
++  v_reason_text text := trim(coalesce(p_reason_text, ''));
++  v_id uuid;
++begin
++  v_admin := private.require_admin();
++  v_grade := private.require_admin_reason_preset_manage_permission(v_admin.user_id, v_admin.role);
++  v_action := private.validate_admin_reason_preset_action(p_action);
++
++  if char_length(v_label) < 2 then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_PRESET_LABEL_REQUIRED';
++  end if;
++  if char_length(v_reason_text) < 2 then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_PRESET_TEXT_REQUIRED';
++  end if;
++
++  if coalesce(p_is_default, false) then
++    update public.admin_transaction_reason_presets
++       set is_default = false,
++           updated_by = v_admin.user_id,
++           updated_at = now()
++     where action = v_action
++       and is_default;
++  end if;
++
++  insert into public.admin_transaction_reason_presets(
++    action, label, reason_text, sort_order, is_default, is_active, created_by, updated_by
++  ) values (
++    v_action, left(v_label, 80), left(v_reason_text, 300), coalesce(p_sort_order, 0), coalesce(p_is_default, false), true, v_admin.user_id, v_admin.user_id
++  ) returning id into v_id;
++
++  insert into public.admin_action_logs(
++    actor_user_id, action_type, reason, before_data, after_data, metadata
++  ) values (
++    v_admin.user_id,
++    'reason_preset.create',
++    v_reason_text,
++    '{}'::jsonb,
++    private.admin_reason_preset_payload(v_id),
++    jsonb_build_object('adminGrade', v_grade)
++  );
++
++  return private.admin_reason_preset_payload(v_id);
++end;
++$$;
++
++create or replace function public.rpc_admin_update_transaction_reason_preset(
++  p_id uuid,
++  p_action text,
++  p_label text,
++  p_reason_text text,
++  p_sort_order integer default 0,
++  p_is_default boolean default false,
++  p_is_active boolean default true
++)
++returns jsonb
++language plpgsql
++volatile
++security definer
++set search_path = ''
++as $$
++declare
++  v_admin public.member%rowtype;
++  v_grade text;
++  v_action text;
++  v_label text := trim(coalesce(p_label, ''));
++  v_reason_text text := trim(coalesce(p_reason_text, ''));
++  v_before jsonb;
++  v_id uuid;
++begin
++  v_admin := private.require_admin();
++  v_grade := private.require_admin_reason_preset_manage_permission(v_admin.user_id, v_admin.role);
++  v_action := private.validate_admin_reason_preset_action(p_action);
++
++  if char_length(v_label) < 2 then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_PRESET_LABEL_REQUIRED';
++  end if;
++  if char_length(v_reason_text) < 2 then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_PRESET_TEXT_REQUIRED';
++  end if;
++
++  v_before := private.admin_reason_preset_payload(p_id);
++  if v_before is null then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_PRESET_NOT_FOUND';
++  end if;
++
++  if coalesce(p_is_default, false) and coalesce(p_is_active, true) then
++    update public.admin_transaction_reason_presets
++       set is_default = false,
++           updated_by = v_admin.user_id,
++           updated_at = now()
++     where action = v_action
++       and id <> p_id
++       and is_default;
++  end if;
++
++  update public.admin_transaction_reason_presets
++     set action = v_action,
++         label = left(v_label, 80),
++         reason_text = left(v_reason_text, 300),
++         sort_order = coalesce(p_sort_order, 0),
++         is_default = case when coalesce(p_is_active, true) then coalesce(p_is_default, false) else false end,
++         is_active = coalesce(p_is_active, true),
++         updated_by = v_admin.user_id,
++         updated_at = now()
++   where id = p_id
++  returning id into v_id;
++
++  insert into public.admin_action_logs(
++    actor_user_id, action_type, reason, before_data, after_data, metadata
++  ) values (
++    v_admin.user_id,
++    'reason_preset.update',
++    v_reason_text,
++    v_before,
++    private.admin_reason_preset_payload(v_id),
++    jsonb_build_object('adminGrade', v_grade)
++  );
++
++  return private.admin_reason_preset_payload(v_id);
++end;
++$$;
++
++create or replace function public.rpc_admin_delete_transaction_reason_preset(p_id uuid)
++returns jsonb
++language plpgsql
++volatile
++security definer
++set search_path = ''
++as $$
++declare
++  v_admin public.member%rowtype;
++  v_grade text;
++  v_before jsonb;
++  v_id uuid;
++begin
++  v_admin := private.require_admin();
++  v_grade := private.require_admin_reason_preset_manage_permission(v_admin.user_id, v_admin.role);
++
++  v_before := private.admin_reason_preset_payload(p_id);
++  if v_before is null then
++    raise exception using errcode = 'P0001', message = 'ADMIN_REASON_PRESET_NOT_FOUND';
++  end if;
++
++  update public.admin_transaction_reason_presets
++     set is_active = false,
++         is_default = false,
++         updated_by = v_admin.user_id,
++         updated_at = now()
++   where id = p_id
++  returning id into v_id;
++
++  insert into public.admin_action_logs(
++    actor_user_id, action_type, reason, before_data, after_data, metadata
++  ) values (
++    v_admin.user_id,
++    'reason_preset.delete',
++    coalesce(v_before ->> 'reasonText', v_before ->> 'label'),
++    v_before,
++    private.admin_reason_preset_payload(v_id),
++    jsonb_build_object('adminGrade', v_grade)
++  );
++
++  return private.admin_reason_preset_payload(v_id);
++end;
++$$;
++
++revoke all on function public.rpc_admin_get_session() from public, anon;
++revoke all on function public.rpc_admin_list_transaction_reason_presets(text, boolean) from public, anon;
++revoke all on function public.rpc_admin_create_transaction_reason_preset(text, text, text, integer, boolean) from public, anon;
++revoke all on function public.rpc_admin_update_transaction_reason_preset(uuid, text, text, text, integer, boolean, boolean) from public, anon;
++revoke all on function public.rpc_admin_delete_transaction_reason_preset(uuid) from public, anon;
++
++grant execute on function public.rpc_admin_get_session() to authenticated;
++grant execute on function public.rpc_admin_list_transaction_reason_presets(text, boolean) to authenticated;
++grant execute on function public.rpc_admin_create_transaction_reason_preset(text, text, text, integer, boolean) to authenticated;
++grant execute on function public.rpc_admin_update_transaction_reason_preset(uuid, text, text, text, integer, boolean, boolean) to authenticated;
++grant execute on function public.rpc_admin_delete_transaction_reason_preset(uuid) to authenticated;
++
++insert into public.admin_transaction_reason_presets(action, label, reason_text, sort_order, is_default)
++select 'airdrop', '에어드랍', '에어드랍', 10, true
++where not exists (
++  select 1 from public.admin_transaction_reason_presets
++   where action = 'airdrop' and label = '에어드랍' and is_active
++);
++
++insert into public.admin_transaction_reason_presets(action, label, reason_text, sort_order, is_default)
++select 'deposit', 'STOC 프리세일 참여', 'STOC 프리세일 참여', 10, true
++where not exists (
++  select 1 from public.admin_transaction_reason_presets
++   where action = 'deposit' and label = 'STOC 프리세일 참여' and is_active
++);
++
++insert into public.admin_transaction_reason_presets(action, label, reason_text, sort_order, is_default)
++select 'withdrawal', '오지급 회수', '오지급 회수', 10, false
++where not exists (
++  select 1 from public.admin_transaction_reason_presets
++   where action = 'withdrawal' and label = '오지급 회수' and is_active
++);
++
++select pg_notify('pgrst', 'reload schema');
