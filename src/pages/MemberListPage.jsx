@@ -70,7 +70,7 @@ export function MemberListPage() {
             label="검색"
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-            placeholder={searchOnly ? '회원 ID, 이름, 이메일, 전화번호, UUID, 회원번호' : '아이디, 이름, 이메일, 전화번호, UUID'}
+            placeholder={searchOnly ? '회원 ID, 이름, 이메일, 전화번호, UUID, 회원번호, 지갑 주소' : '아이디, 이름, 이메일, 전화번호, UUID, 지갑 주소'}
           />
           <Select label="상태" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">전체</option><option value="pending">pending</option><option value="active">active</option><option value="suspended">suspended</option><option value="deleted">deleted</option></Select>
           <Select label="권한" value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value })}><option value="">전체</option><option value="user">user</option><option value="admin">admin</option><option value="super_admin">super_admin</option></Select>
@@ -85,7 +85,7 @@ export function MemberListPage() {
         {loading ? <Loading /> : null}
         {!loading && error ? <EmptyState title={error} description="조회 조건을 확인한 뒤 다시 시도해주세요." /> : null}
         {!loading && !error && searchOnly && result.searchRequired ? (
-          <EmptyState title="회원 검색이 필요합니다." description="회원 ID, 이름, 이메일, 전화번호, UUID 또는 회원번호를 정확히 입력해주세요." />
+          <EmptyState title="회원 검색이 필요합니다." description="회원 ID, 이름, 이메일, 전화번호, UUID, 회원번호 또는 지갑 주소를 정확히 입력해주세요." />
         ) : null}
         {!loading && !error && !result.searchRequired && !result.items.length ? <EmptyState title="검색된 회원이 없습니다." /> : null}
         {!loading && !error && result.items.length ? (

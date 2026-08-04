@@ -5,6 +5,7 @@ import { AdminLayout } from '../components/AdminLayout.jsx';
 import { AssetAdjustmentModal } from '../components/AssetAdjustmentModal.jsx';
 import { Button, Card, CopyButton, EmptyState, Loading, PageHeader, StatusBadge } from '../components/Common.jsx';
 import { navigate } from '../router.js';
+import { shortenAddress } from '../utils/address.js';
 import { formatBoolean, formatDateTime, formatNumber } from '../utils/format.js';
 
 function renderValue(key, value) {
@@ -13,6 +14,18 @@ function renderValue(key, value) {
   if (typeof value === 'object') return <pre className="json-view">{JSON.stringify(value, null, 2)}</pre>;
   if (key.endsWith('_at') || key.includes('date')) return formatDateTime(value);
   return String(value);
+}
+
+
+function WalletAddressCell({ wallet }) {
+  if (!wallet?.address) return '-';
+  return (
+    <span className="wallet-address-cell">
+      <code>{shortenAddress(wallet.address)}</code>
+      <CopyButton value={wallet.address} />
+      {wallet.address_status ? <small>{wallet.address_status}</small> : null}
+    </span>
+  );
 }
 
 function ObjectFields({ data }) {
@@ -78,7 +91,7 @@ export function MemberDetailPage({ userId }) {
           <Card title="member 전체 컬럼"><ObjectFields data={member} /></Card>
 
           <Card title={`지갑 계정 (${data.walletAccounts?.length || 0})`}>
-            {!data.walletAccounts?.length ? <EmptyState /> : <div className="table-wrap"><table><thead><tr><th>asset_code</th><th>account_type</th><th>chain</th><th className="align-right">available_balance</th><th className="align-right">locked_balance</th><th>updated_at</th></tr></thead><tbody>{data.walletAccounts.map((wallet) => <tr key={wallet.id}><td>{wallet.asset_code}</td><td>{wallet.account_type}</td><td>{wallet.chain || '-'}</td><td className="align-right">{formatNumber(wallet.available_balance)}</td><td className="align-right">{formatNumber(wallet.locked_balance)}</td><td>{formatDateTime(wallet.updated_at)}</td></tr>)}</tbody></table></div>}
+            {!data.walletAccounts?.length ? <EmptyState /> : <div className="table-wrap"><table><thead><tr><th>asset_code</th><th>account_type</th><th>chain</th><th>address</th><th className="align-right">available_balance</th><th className="align-right">locked_balance</th><th>updated_at</th></tr></thead><tbody>{data.walletAccounts.map((wallet) => <tr key={wallet.id}><td>{wallet.asset_code}</td><td>{wallet.account_type}</td><td>{wallet.chain || '-'}</td><td><WalletAddressCell wallet={wallet} /></td><td className="align-right">{formatNumber(wallet.available_balance)}</td><td className="align-right">{formatNumber(wallet.locked_balance)}</td><td>{formatDateTime(wallet.updated_at)}</td></tr>)}</tbody></table></div>}
           </Card>
 
           <Card title={`최근 거래 (${data.recentTransactions?.length || 0})`}>
