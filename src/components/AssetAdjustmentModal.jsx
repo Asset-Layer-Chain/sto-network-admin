@@ -18,6 +18,31 @@ const ACTIONS = {
   airdrop: { title: 'STOC 에어드랍', submit: '에어드랍 확정', sign: 1 },
 };
 
+const DEFAULT_REASON_BY_ACTION = {
+  deposit: 'STOC 프리세일 참여',
+  withdrawal: '',
+  airdrop: '에어드랍',
+};
+
+function normalizeAmountInput(value) {
+  const cleaned = String(value ?? '')
+    .replace(/,/g, '')
+    .replace(/[^\d.]/g, '');
+
+  if (!cleaned) return '';
+
+  const [integerPart, ...fractionParts] = cleaned.split('.');
+  const hasDecimalPoint = cleaned.includes('.');
+  const normalizedInteger = (integerPart || '0')
+    .replace(/^0+(?=\d)/, '')
+    .slice(0, 15);
+  const normalizedFraction = fractionParts.join('').slice(0, 8);
+
+  return hasDecimalPoint
+    ? `${normalizedInteger}.${normalizedFraction}`
+    : normalizedInteger;
+}
+
 export function AssetAdjustmentModal({ open, member, action, onClose, onCompleted }) {
   const { admin } = useAuth();
   const config = ACTIONS[action] || ACTIONS.deposit;
@@ -31,7 +56,7 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
   useEffect(() => {
     if (!open) return;
     setAmount('');
-    setReason('');
+    setReason(DEFAULT_REASON_BY_ACTION[action] ?? '');
     setError('');
     setIdempotencyKey(createIdempotencyKey(`admin-${action}`));
   }, [open, action]);
@@ -56,7 +81,7 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
       return;
     }
 
-    const normalizedAmount = amount.trim();
+    const normalizedAmount = normalizeAmountInput(amount);
     if (!isValidStocAmount(normalizedAmount)) {
       setError(`금액은 0보다 크고, 정수 15자리·소수점 8자리 이내여야 합니다. 최대 ${STOC_MAX_AMOUNT} STOC`);
       return;
@@ -104,7 +129,15 @@ export function AssetAdjustmentModal({ open, member, action, onClose, onComplete
         <div><span>처리 후 예상</span><strong className={expectedIsNegative ? 'text-danger' : ''}>{expectedScaled === null ? '-' : `${formatScaledDecimal(expectedScaled)} STOC`}</strong></div>
       </div>
       {requiresStatusWarning ? <div className="notice notice-warning">현재 {memberStatus} 상태인 회원입니다. 상태를 확인한 뒤 처리해주세요.</div> : null}
-      <Input label="금액" type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00000000" autoComplete="off" />
+      <Input
+        label="금액"
+        type="text"
+        inputMode="decimal"
+        value={amount}
+        onChange={(e) => setAmount(normalizeAmountInput(e.target.value))}
+        placeholder="0.00000000"
+        autoComplete="off"
+      />
       <Textarea label="처리 사유" rows="4" maxLength="300" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="감사 로그와 거래 메타데이터에 저장됩니다." />
       {error ? <p className="form-error">{error}</p> : null}
     </Modal>
