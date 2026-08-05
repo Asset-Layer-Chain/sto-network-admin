@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { copyText } from '../utils/clipboard.js';
 
 export function Button({ children, variant = 'primary', size = 'md', className = '', ...props }) {
   return <button className={`button button-${variant} button-${size} ${className}`.trim()} {...props}>{children}</button>;
@@ -115,9 +116,26 @@ export function Pagination({ page, pageSize, totalCount, onChange }) {
 }
 
 export function CopyButton({ value }) {
+  const [status, setStatus] = useState('idle');
+
   const copy = async () => {
     if (!value) return;
-    await navigator.clipboard.writeText(String(value));
+    const copied = await copyText(value);
+    setStatus(copied ? 'copied' : 'failed');
+    window.setTimeout(() => setStatus('idle'), 1400);
   };
-  return <button className="copy-button" onClick={copy} title="복사">복사</button>;
+
+  const label = status === 'copied' ? '복사됨' : status === 'failed' ? '실패' : '복사';
+  const title = status === 'failed' ? '복사에 실패했습니다. 직접 선택해서 복사해주세요.' : '복사';
+
+  return (
+    <button
+      type="button"
+      className={`copy-button ${status !== 'idle' ? `copy-button-${status}` : ''}`.trim()}
+      onClick={copy}
+      title={title}
+    >
+      {label}
+    </button>
+  );
 }

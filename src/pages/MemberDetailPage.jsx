@@ -5,7 +5,6 @@ import { AdminLayout } from '../components/AdminLayout.jsx';
 import { AssetAdjustmentModal } from '../components/AssetAdjustmentModal.jsx';
 import { Button, Card, CopyButton, EmptyState, Loading, PageHeader, StatusBadge } from '../components/Common.jsx';
 import { navigate } from '../router.js';
-import { shortenAddress } from '../utils/address.js';
 import { formatBoolean, formatDateTime, formatNumber } from '../utils/format.js';
 
 function renderValue(key, value) {
@@ -21,7 +20,7 @@ function WalletAddressCell({ wallet }) {
   if (!wallet?.address) return '-';
   return (
     <span className="wallet-address-cell">
-      <code>{shortenAddress(wallet.address)}</code>
+      <code title={wallet.address}>{wallet.address}</code>
       <CopyButton value={wallet.address} />
       {wallet.address_status ? <small>{wallet.address_status}</small> : null}
     </span>
