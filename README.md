@@ -60,6 +60,7 @@ supabase/migrations/202608030400_wallet_account_addresses.sql
 supabase/migrations/202608030500_signup_attribution_event.sql
 supabase/migrations/202608030600_remove_member_devices_consents_from_detail.sql
 supabase/migrations/202608030700_limit_signup_attribution_event_columns.sql
+supabase/migrations/202608030800_attribution_events_touch_types.sql
 ```
 
 Supabase CLI를 사용하는 경우:

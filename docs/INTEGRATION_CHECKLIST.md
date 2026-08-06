@@ -17,10 +17,11 @@
 - [ ] 회원 상세의 `member` 객체에 실제 컬럼이 모두 표시된다.
 - [ ] `STOC_INT/internal` 지갑이 없는 회원은 잔액 0으로 표시된다.
 - [ ] 회원 상세의 지갑 계정 테이블에서 지갑 주소가 전체 문자열로 표시되고 복사된다.
-- [ ] 회원 상세의 가입 유입 이벤트는 `marketing_attribution_events.event_type = 'signup'` 최신 1건 기준으로 표시된다.
-- [ ] 가입 유입 이벤트에는 `channel`, `source`, `medium`, `campaign`, `ad_group`, `ad_creative`, `referral_code`, `created_at`만 표시된다.
+- [ ] 회원 상세의 마케팅 유입 이벤트는 `first_touch`, `last_touch`, `signup` 최신 1건씩 표시된다.
+- [ ] 마케팅 유입 이벤트에는 `channel`, `source`, `medium`, `campaign`, `ad_group`, `ad_creative`, `referral_code`, `created_at`만 표시된다.
+- [ ] `member 전체 컬럼`에는 `signup_attribution_*` 중 운영자가 제외 요청한 중복 컬럼이 표시되지 않는다.
 - [ ] 회원 상세에 `기기`와 `동의 정보` 카드가 표시되지 않는다.
-- [ ] signup 유입 이벤트가 없는 회원은 명확한 빈 상태 문구가 표시된다.
+- [ ] `first_touch`, `last_touch`, `signup` 중 없는 이벤트는 타입별 빈 상태 문구가 표시된다.
 
 ## 자산 권한
 

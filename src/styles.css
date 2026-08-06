@@ -149,6 +149,11 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
 .copy-button-copied { background: #dcfce7; color: #166534; }
 .copy-button-failed { background: #fee2e2; color: #991b1b; }
 .json-view { max-height: 260px; overflow: auto; margin: 0; padding: 11px; border-radius: 7px; background: #111827; color: #e5e7eb; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+.attribution-event-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.attribution-event-card { min-width: 0; }
+.attribution-event-card h4 { margin: 0 0 10px; font-size: 13px; color: #111827; }
+.attribution-event-card .detail-grid { grid-template-columns: 1fr; }
+.attribution-event-card .detail-grid > div { border-right: 0; }
 .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 
 .member-picker { min-width: 0; }
@@ -218,6 +223,7 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
   .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .detail-grid > div:nth-child(3n) { border-right: 1px solid var(--border); }
   .detail-grid > div:nth-child(2n) { border-right: 0; }
+  .attribution-event-grid { grid-template-columns: 1fr; }
 }
 
 .wallet-address-cell { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; max-width: min(860px, 100%); }
