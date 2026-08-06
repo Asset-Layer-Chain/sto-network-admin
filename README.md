@@ -58,6 +58,8 @@ supabase/migrations/202608030200_team_lead_member_search.sql
 supabase/migrations/202608030300_transaction_reason_presets.sql
 supabase/migrations/202608030400_wallet_account_addresses.sql
 supabase/migrations/202608030500_signup_attribution_event.sql
+supabase/migrations/202608030600_remove_member_devices_consents_from_detail.sql
+supabase/migrations/202608030700_limit_signup_attribution_event_columns.sql
 ```
 
 Supabase CLI를 사용하는 경우:
@@ -151,7 +153,7 @@ rpc_admin_list_action_logs
 
 ## 1차 통합 확인 순서
 
-1. 마이그레이션 3개 순서대로 적용
+1. 마이그레이션 파일을 순서대로 적용
 2. Auth 계정 3개 생성 후 `register_admin_accounts.sql` 실행
 3. 관리자 계정 로그인
 4. 팀장급 계정에서 에어드랍만 노출·실행되는지 확인

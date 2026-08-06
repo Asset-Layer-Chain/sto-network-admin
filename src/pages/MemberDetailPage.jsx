@@ -141,10 +141,6 @@ export function MemberDetailPage({ userId }) {
           </Card>
 
           <div className="two-column">
-            <Card title={`기기 (${data.devices?.length || 0})`}><ObjectFields data={data.devices?.length ? Object.fromEntries(data.devices.map((item, index) => [`device_${index + 1}`, item])) : null} /></Card>
-            <Card title={`동의 정보 (${data.consents?.length || 0})`}><ObjectFields data={data.consents?.length ? Object.fromEntries(data.consents.map((item, index) => [`consent_${index + 1}`, item])) : null} /></Card>
-          </div>
-          <div className="two-column">
             <Card title="가입 유입 이벤트"><ObjectFields data={data.signupAttributionEvent} emptyTitle="가입 유입 이벤트가 없습니다." emptyDescription="marketing_attribution_events에서 event_type='signup'인 이벤트를 찾지 못했습니다." /></Card>
             <Card title="탈퇴 요청"><ObjectFields data={data.deletionRequest} /></Card>
           </div>

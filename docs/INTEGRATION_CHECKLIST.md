@@ -18,6 +18,8 @@
 - [ ] `STOC_INT/internal` 지갑이 없는 회원은 잔액 0으로 표시된다.
 - [ ] 회원 상세의 지갑 계정 테이블에서 지갑 주소가 전체 문자열로 표시되고 복사된다.
 - [ ] 회원 상세의 가입 유입 이벤트는 `marketing_attribution_events.event_type = 'signup'` 최신 1건 기준으로 표시된다.
+- [ ] 가입 유입 이벤트에는 `channel`, `source`, `medium`, `campaign`, `ad_group`, `ad_creative`, `referral_code`, `created_at`만 표시된다.
+- [ ] 회원 상세에 `기기`와 `동의 정보` 카드가 표시되지 않는다.
 - [ ] signup 유입 이벤트가 없는 회원은 명확한 빈 상태 문구가 표시된다.
 
 ## 자산 권한

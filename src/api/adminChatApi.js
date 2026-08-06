@@ -1,6 +1,26 @@
 import { callRpc } from './rpcClient.js';
 import { getSupabaseClient } from './supabaseClient.js';
 
+function createClientMessageId() {
+  try {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+    if (globalThis.crypto?.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      globalThis.crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'));
+      return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
+    }
+  } catch {
+    // Fall through to the timestamp fallback.
+  }
+
+  return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function normalizeChatMessage(message) {
   if (!message) return null;
   return {
@@ -83,9 +103,11 @@ export async function getChatMessage(messageId) {
 }
 
 export async function sendChatMessage({ roomId, content, clientMessageId = null }) {
+  const resolvedClientMessageId = String(clientMessageId || createClientMessageId()).trim();
+
   const message = normalizeChatMessage(await callRpc('rpc_send_chat_message', {
     p_room_id: roomId,
-    p_client_message_id: clientMessageId || globalThis.crypto?.randomUUID?.(),
+    p_client_message_id: resolvedClientMessageId,
     p_content: content,
   }));
   if (!message?.id || message.senderRole) return message;
