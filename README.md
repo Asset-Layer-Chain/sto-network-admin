@@ -55,6 +55,9 @@ VITE_APP_BASE_PATH=/
 supabase/migrations/202608010050_product_admin_console.sql
 supabase/migrations/202608030100_admin_grade_permissions.sql
 supabase/migrations/202608030200_team_lead_member_search.sql
+supabase/migrations/202608030300_transaction_reason_presets.sql
+supabase/migrations/202608030400_wallet_account_addresses.sql
+supabase/migrations/202608030500_signup_attribution_event.sql
 ```
 
 Supabase CLI를 사용하는 경우:

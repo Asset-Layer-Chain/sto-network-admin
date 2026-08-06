@@ -7,6 +7,37 @@ import { Button, Card, CopyButton, EmptyState, Loading, PageHeader, StatusBadge 
 import { navigate } from '../router.js';
 import { formatBoolean, formatDateTime, formatNumber } from '../utils/format.js';
 
+const COPYABLE_DETAIL_KEYS = new Set([
+  'user_id',
+  'mb_email',
+  'mb_hp',
+  'google_id',
+  'referral_code',
+  'id',
+  'anonymous_id',
+  'session_id',
+  'raw_url',
+  'landing_url',
+  'referrer_url',
+  'raw_params',
+  'attribution_payload',
+  'campaign_id',
+  'ad_group_id',
+  'ad_creative_id',
+  'ad_id',
+  'click_id',
+  'gclid',
+  'gbraid',
+  'wbraid',
+  'gaid_raw',
+  'routing_short_id',
+  'tracking_template_id',
+  'sub_id',
+  'sub_id_1',
+  'sub_id_2',
+  'sub_id_3',
+]);
+
 function renderValue(key, value) {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'boolean') return formatBoolean(value);
@@ -15,6 +46,16 @@ function renderValue(key, value) {
   return String(value);
 }
 
+function getCopyValue(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function shouldShowCopy(key, value) {
+  if (value === null || value === undefined || value === '') return false;
+  return COPYABLE_DETAIL_KEYS.has(key);
+}
 
 function WalletAddressCell({ wallet }) {
   if (!wallet?.address) return '-';
@@ -27,14 +68,16 @@ function WalletAddressCell({ wallet }) {
   );
 }
 
-function ObjectFields({ data }) {
-  if (!data) return <EmptyState />;
+function ObjectFields({ data, emptyTitle, emptyDescription }) {
+  if (!data || (typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 0)) {
+    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+  }
   return (
     <dl className="detail-grid">
       {Object.entries(data).map(([key, value]) => (
         <div key={key} className={typeof value === 'object' && value !== null ? 'detail-wide' : ''}>
           <dt>{key}</dt>
-          <dd>{renderValue(key, value)}{['user_id', 'mb_email', 'mb_hp', 'google_id', 'referral_code'].includes(key) && value ? <CopyButton value={value} /> : null}</dd>
+          <dd>{renderValue(key, value)}{shouldShowCopy(key, value) ? <CopyButton value={getCopyValue(value)} /> : null}</dd>
         </div>
       ))}
     </dl>
@@ -102,7 +145,7 @@ export function MemberDetailPage({ userId }) {
             <Card title={`동의 정보 (${data.consents?.length || 0})`}><ObjectFields data={data.consents?.length ? Object.fromEntries(data.consents.map((item, index) => [`consent_${index + 1}`, item])) : null} /></Card>
           </div>
           <div className="two-column">
-            <Card title="마케팅 유입 정보"><ObjectFields data={data.marketingAttribution} /></Card>
+            <Card title="가입 유입 이벤트"><ObjectFields data={data.signupAttributionEvent} emptyTitle="가입 유입 이벤트가 없습니다." emptyDescription="marketing_attribution_events에서 event_type='signup'인 이벤트를 찾지 못했습니다." /></Card>
             <Card title="탈퇴 요청"><ObjectFields data={data.deletionRequest} /></Card>
           </div>
           <Card title={`참여 채팅방 (${data.chatRooms?.length || 0})`}>

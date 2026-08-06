@@ -1,4 +1,12 @@
 # Supabase 변경
 
-`migrations/202608010050_product_admin_console.sql`만 신규 관리자 프로젝트용 마이그레이션입니다.
-기존 STO Network DB 스키마와 채팅 RPC가 적용된 이후 실행해야 합니다.
+기존 STO Network DB 스키마와 채팅 RPC가 적용된 이후 아래 관리자 프로젝트용 마이그레이션을 순서대로 실행합니다.
+
+```text
+migrations/202608010050_product_admin_console.sql
+migrations/202608030100_admin_grade_permissions.sql
+migrations/202608030200_team_lead_member_search.sql
+migrations/202608030300_transaction_reason_presets.sql
+migrations/202608030400_wallet_account_addresses.sql
+migrations/202608030500_signup_attribution_event.sql
+```
