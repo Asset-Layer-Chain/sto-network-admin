@@ -13,6 +13,7 @@ const STATUS_LABELS = {
   INVALID_ROW: '행 오류',
   INVALID_AMOUNT: '금액 오류',
   NOT_FOUND: '회원/주소 불일치',
+  MULTIPLE_MATCHES: '중복 회원 매칭',
   DUPLICATED_IN_EXCEL: '엑셀 중복',
   FILE_ALREADY_COMPLETED: '이미 지급 완료된 파일',
   EXECUTION_BLOCKED: '실행 반려',
@@ -22,8 +23,9 @@ const STATUS_LABELS = {
 const ERROR_LABELS = {
   INVALID_ROW: '필수값이 비어 있습니다.',
   INVALID_AMOUNT: '지급 수량을 확인해주세요.',
-  NOT_FOUND: '회원명·연락처·지갑주소가 모두 일치하는 회원을 찾지 못했습니다.',
-  DUPLICATED_IN_EXCEL: '엑셀 안에 동일 행이 중복되어 있습니다.',
+  NOT_FOUND: '연락처·지갑주소가 일치하는 회원을 찾지 못했습니다.',
+  MULTIPLE_MATCHES: '연락처·지갑주소가 2명 이상에게 매칭되어 반려되었습니다.',
+  DUPLICATED_IN_EXCEL: '엑셀 안에 동일 연락처·지갑주소가 중복되어 있습니다.',
   FILE_ALREADY_COMPLETED: '이미 지급 완료된 엑셀 파일입니다.',
   EXECUTION_BLOCKED: '검증 제외 건이 있어 실행할 수 없습니다.',
 };
@@ -31,7 +33,7 @@ const ERROR_LABELS = {
 function statusTone(status) {
   if (status === 'PAYABLE') return 'success';
   if (status === 'PAID') return 'purple';
-  if (status === 'FILE_ALREADY_COMPLETED' || status === 'DUPLICATED_IN_EXCEL') return 'warning';
+  if (status === 'FILE_ALREADY_COMPLETED' || status === 'DUPLICATED_IN_EXCEL' || status === 'MULTIPLE_MATCHES') return 'warning';
   return 'danger';
 }
 
@@ -65,7 +67,8 @@ function ResultTable({ items }) {
         <thead>
           <tr>
             <th>행</th>
-            <th>회원명</th>
+            <th>엑셀 회원명</th>
+            <th>DB 회원명</th>
             <th>연락처</th>
             <th>계약기간</th>
             <th>지갑주소</th>
@@ -82,7 +85,8 @@ function ResultTable({ items }) {
             return (
               <tr key={getItemValue(item, 'id') || `${getItemValue(item, 'rowNo')}-${index}`}>
                 <td>{getItemValue(item, 'rowNo') || '-'}</td>
-                <td>{getItemValue(item, 'memberName') || '-'}</td>
+                <td>{getItemValue(item, 'excelMemberName') || getItemValue(item, 'memberName') || '-'}</td>
+                <td>{getItemValue(item, 'dbMemberName') || '-'}</td>
                 <td>{getItemValue(item, 'phone') || getItemValue(item, 'normalizedPhone') || '-'}</td>
                 <td>{getItemValue(item, 'contractPeriod') || '-'}</td>
                 <td><code className="bulk-wallet-address">{walletAddress || '-'}</code></td>
@@ -214,7 +218,7 @@ export function BulkPosDepositPage() {
     <AdminLayout active="bulk-pos-deposit">
       <PageHeader
         title="POS 일괄 지급"
-        description="엑셀의 회원명·연락처·지갑주소가 모두 일치하는 회원에게 STOC_INT를 일괄 지급합니다."
+        description="엑셀의 연락처·지갑주소가 일치하는 회원에게 STOC_INT를 일괄 지급합니다. 회원명은 검증 조건에서 제외하고 비교용으로 표시합니다."
       />
 
       {!canManage ? (

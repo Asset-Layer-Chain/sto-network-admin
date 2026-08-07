@@ -1,5 +1,13 @@
 export const BULK_POS_REQUIRED_HEADERS = ['회원명', '연락처', '계약기간', '지갑주소', '지급 수량'];
 
+const BULK_POS_HEADER_MATCHERS = {
+  회원명: (header) => header === '회원명',
+  연락처: (header) => header === '연락처',
+  계약기간: (header) => header === '계약기간',
+  지갑주소: (header) => header === '지갑주소',
+  '지급 수량': (header) => header === '지급수량' || header === '지급량' || header === '수량' || header.includes('지급수량'),
+};
+
 const textDecoder = new TextDecoder('utf-8');
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -21,6 +29,23 @@ export async function sha256File(file) {
 function normalizeCell(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+function normalizeHeader(value) {
+  return normalizeCell(value)
+    .replace(/[\s\u00a0]+/g, '')
+    .replace(/[()（）]/g, '')
+    .toLowerCase();
+}
+
+function normalizeAmountCell(value) {
+  const text = normalizeCell(value).replace(/,/g, '').replace(/[\s\u00a0]+/g, '');
+  const match = text.match(/^\+?(\d+)(?:\.(\d*))?$/);
+  if (!match) return text;
+
+  const integer = match[1].replace(/^0+(?=\d)/, '') || '0';
+  const fraction = (match[2] || '').slice(0, 8);
+  return fraction ? `${integer}.${fraction}` : integer;
 }
 
 function readUint32(view, offset) {
@@ -168,12 +193,21 @@ async function readFirstSheetRows(buffer) {
   return result.map((row) => row || []);
 }
 
+function findHeaderIndex(headers, requiredHeader) {
+  const matcher = BULK_POS_HEADER_MATCHERS[requiredHeader] || ((header) => header === normalizeHeader(requiredHeader));
+  return headers.findIndex((header) => matcher(header));
+}
+
 function findHeaderRow(rows) {
   const max = Math.min(rows.length, 10);
   for (let index = 0; index < max; index += 1) {
-    const normalized = rows[index].map(normalizeCell);
-    const hasAll = BULK_POS_REQUIRED_HEADERS.every((header) => normalized.includes(header));
-    if (hasAll) return { index, headers: normalized };
+    const rawHeaders = rows[index].map(normalizeCell);
+    const normalizedHeaders = rawHeaders.map(normalizeHeader);
+    const headerIndexes = Object.fromEntries(
+      BULK_POS_REQUIRED_HEADERS.map((header) => [header, findHeaderIndex(normalizedHeaders, header)])
+    );
+    const hasAll = BULK_POS_REQUIRED_HEADERS.every((header) => headerIndexes[header] >= 0);
+    if (hasAll) return { index, headers: rawHeaders, headerIndexes };
   }
   return null;
 }
@@ -187,9 +221,7 @@ export async function parseBulkPosExcel(file) {
     throw new Error(`엑셀 컬럼이 올바르지 않습니다. 필수 컬럼: ${BULK_POS_REQUIRED_HEADERS.join(', ')}`);
   }
 
-  const headerIndexes = Object.fromEntries(
-    BULK_POS_REQUIRED_HEADERS.map((header) => [header, headerRow.headers.indexOf(header)])
-  );
+  const { headerIndexes } = headerRow;
 
   const parsedRows = rows.slice(headerRow.index + 1)
     .map((row, offset) => {
@@ -200,7 +232,7 @@ export async function parseBulkPosExcel(file) {
         phone: normalizeCell(row[headerIndexes['연락처']]),
         contractPeriod: normalizeCell(row[headerIndexes['계약기간']]),
         walletAddress: normalizeCell(row[headerIndexes['지갑주소']]),
-        amount: normalizeCell(row[headerIndexes['지급 수량']]).replace(/,/g, ''),
+        amount: normalizeAmountCell(row[headerIndexes['지급 수량']]),
       };
     })
     .filter((row) => [row.memberName, row.phone, row.contractPeriod, row.walletAddress, row.amount].some(Boolean));
