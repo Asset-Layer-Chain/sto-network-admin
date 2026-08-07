@@ -41,6 +41,20 @@
 - [ ] 거래 metadata와 감사 로그의 변경 전후 잔액이 일치한다.
 - [ ] 거래 metadata와 감사 로그 metadata에 관리자 `admin_grade`가 남는다.
 
+
+## POS 일괄 지급
+
+- [ ] 본부급 계정에만 `POS 일괄 지급` 메뉴가 표시된다.
+- [ ] 팀장급/센터장 계정이 RPC를 직접 호출하면 `ADMIN_BULK_DEPOSIT_PERMISSION_DENIED`로 실패한다.
+- [ ] 필수 컬럼이 `회원명`, `연락처`, `계약기간`, `지갑주소`, `지급 수량`으로 고정 검증된다.
+- [ ] 엑셀 내 동일 행이 있으면 전체 지급이 반려된다.
+- [ ] 회원명·연락처·지갑주소가 모두 일치하지 않는 행이 1건이라도 있으면 전체 지급이 반려된다.
+- [ ] 이미 지급 완료된 동일 엑셀 파일은 파일 해시 기준으로 다시 사용할 수 없다.
+- [ ] 1차 확인 후 `PAY_N_ROWS` 최종 확인 문구를 입력해야 지급된다.
+- [ ] 지급 성공 시 `wallet_accounts` STOC_INT 잔액이 증가한다.
+- [ ] 지급 성공 시 `transactions.transaction_type = deposit`, `reference_type = admin_bulk_pos_deposit` 기록이 생성된다.
+- [ ] 지급 성공 시 batch/item 상태가 `completed`/`PAID`로 변경된다.
+
 ## 채팅
 
 - [ ] 방 생성자는 `chat_members.role = admin`이다.

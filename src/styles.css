@@ -229,3 +229,19 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
 .wallet-address-cell { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; max-width: min(860px, 100%); }
 .wallet-address-cell code { min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; line-height: 1.45; color: #111827; white-space: normal; overflow-wrap: anywhere; word-break: break-all; }
 .wallet-address-cell small { width: 100%; margin-top: 2px; color: #6b7280; }
+
+.bulk-upload-box { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.bulk-upload-box strong { display: block; margin-bottom: 6px; }
+.bulk-upload-box p { margin-bottom: 6px; color: #374151; }
+.file-upload-button { position: relative; overflow: hidden; }
+.file-upload-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.bulk-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.bulk-summary-grid .card-body { min-height: 108px; display: flex; flex-direction: column; justify-content: center; }
+.bulk-table-wrap { max-height: none; }
+.bulk-wallet-address { display: block; max-width: 520px; white-space: normal; overflow-wrap: anywhere; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+.bulk-result-notice { margin: 14px 18px 0; }
+
+@media (max-width: 1280px) {
+  .bulk-summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .bulk-upload-box { display: grid; }
+}

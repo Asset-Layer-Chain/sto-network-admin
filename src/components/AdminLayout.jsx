@@ -6,6 +6,7 @@ import { Button, StatusBadge } from './Common.jsx';
 const menus = [
   { path: '/members', label: '회원 관리', key: 'members' },
   { path: '/transactions', label: '거래 내역', key: 'transactions' },
+  { path: '/bulk-pos-deposit', label: 'POS 일괄 지급', key: 'bulk-pos-deposit', permission: 'bulkDepositManage' },
   { path: '/transaction-reasons', label: '처리 사유', key: 'reason-presets', permission: 'reasonPresetManage' },
   { path: '/chats', label: '채팅 관리', key: 'chats' },
   { path: '/admin-logs', label: '관리자 로그', key: 'admin-logs' },
