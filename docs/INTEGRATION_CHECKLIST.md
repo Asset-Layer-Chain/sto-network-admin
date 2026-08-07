@@ -51,6 +51,8 @@
 - [ ] 회원명·연락처·지갑주소가 모두 일치하지 않는 행이 1건이라도 있으면 전체 지급이 반려된다.
 - [ ] 이미 지급 완료된 동일 엑셀 파일은 파일 해시 기준으로 다시 사용할 수 없다.
 - [ ] 1차 확인 후 `PAY_N_ROWS` 최종 확인 문구를 입력해야 지급된다.
+- [ ] POS 일괄 지급 실행 전 deposit 처리 사유 프리셋을 선택하거나 직접 입력해야 한다.
+- [ ] 지급 성공 시 선택/입력한 처리 사유가 `transactions.description`, metadata, 관리자 감사 로그에 남는다.
 - [ ] 지급 성공 시 `wallet_accounts` STOC_INT 잔액이 증가한다.
 - [ ] 지급 성공 시 `transactions.transaction_type = deposit`, `reference_type = admin_bulk_pos_deposit` 기록이 생성된다.
 - [ ] 지급 성공 시 batch/item 상태가 `completed`/`PAID`로 변경된다.

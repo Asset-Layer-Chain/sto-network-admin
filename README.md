@@ -63,6 +63,8 @@ supabase/migrations/202608030600_remove_member_devices_consents_from_detail.sql
 supabase/migrations/202608030700_limit_signup_attribution_event_columns.sql
 supabase/migrations/202608030800_attribution_events_touch_types.sql
 supabase/migrations/202608030900_bulk_pos_deposit.sql
+supabase/migrations/202608031000_fix_bulk_pos_uuid_min.sql
+supabase/migrations/202608031100_bulk_pos_deposit_reason.sql
 ```
 
 Supabase CLI를 사용하는 경우:
@@ -192,4 +194,4 @@ rpc_admin_list_action_logs
 지급 수량
 ```
 
-검증 기준은 회원명, 숫자만 남긴 연락처, 지갑주소 전체 일치입니다. 엑셀 내 중복 행, 금액 오류, 회원/주소 불일치, 이미 완료된 동일 파일 SHA-256 해시가 있으면 전체 지급이 반려됩니다. 실행 시에는 `PAY_N_ROWS` 확인 문구를 입력해야 하며, 성공 후 `transactions.transaction_type = deposit` 기록과 관리자 감사 로그가 생성됩니다.
+검증 기준은 회원명, 숫자만 남긴 연락처, 지갑주소 전체 일치입니다. 엑셀 내 중복 행, 금액 오류, 회원/주소 불일치, 이미 완료된 동일 파일 SHA-256 해시가 있으면 전체 지급이 반려됩니다. 실행 시에는 deposit 처리 사유 프리셋을 선택하거나 직접 입력하고, `PAY_N_ROWS` 확인 문구를 입력해야 합니다. 성공 후 `transactions.transaction_type = deposit` 기록, 처리 사유, 관리자 감사 로그가 생성됩니다.

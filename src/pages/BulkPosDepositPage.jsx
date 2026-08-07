@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { executeBulkPosDeposit, validateBulkPosDeposit } from '../api/adminBulkPayoutApi.js';
+import { listReasonPresets } from '../api/adminReasonPresetApi.js';
 import { AdminLayout } from '../components/AdminLayout.jsx';
-import { Badge, Button, Card, EmptyState, Input, Loading, Modal, PageHeader } from '../components/Common.jsx';
+import { Badge, Button, Card, EmptyState, Input, Loading, Modal, PageHeader, Select, Textarea } from '../components/Common.jsx';
 import { BULK_POS_REQUIRED_HEADERS, parseBulkPosExcel } from '../utils/bulkPosExcel.js';
 import { formatNumber } from '../utils/format.js';
 
@@ -36,6 +37,11 @@ function statusTone(status) {
 
 function getItemValue(item, key) {
   return item?.[key] ?? item?.[key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)] ?? '';
+}
+
+function pickInitialPreset(presets) {
+  if (!presets.length) return null;
+  return presets.find((item) => item.isDefault) || presets[0];
 }
 
 function ResultSummary({ result }) {
@@ -102,11 +108,49 @@ export function BulkPosDepositPage() {
   const [confirmStep, setConfirmStep] = useState(null);
   const [confirmText, setConfirmText] = useState('');
   const [executedResult, setExecutedResult] = useState(null);
+  const [reasonPresets, setReasonPresets] = useState([]);
+  const [selectedReasonPresetId, setSelectedReasonPresetId] = useState('custom');
+  const [reason, setReason] = useState('');
+  const [loadingReasonPresets, setLoadingReasonPresets] = useState(false);
 
   const canManage = Boolean(admin?.permissions?.bulkDepositManage);
-  const canExecute = canManage && Boolean(result?.canExecute) && !executedResult;
+  const normalizedReason = reason.trim();
+  const reasonIsValid = normalizedReason.length >= 1 && normalizedReason.length <= 200;
+  const canExecute = canManage && Boolean(result?.canExecute) && !executedResult && reasonIsValid && !loadingReasonPresets;
   const expectedConfirmText = result?.confirmText || '';
   const uploadDescription = useMemo(() => `필수 컬럼: ${BULK_POS_REQUIRED_HEADERS.join(', ')}`, []);
+
+  useEffect(() => {
+    if (!canManage) return undefined;
+    let ignore = false;
+    setLoadingReasonPresets(true);
+    listReasonPresets({ action: 'deposit' })
+      .then((items) => {
+        if (ignore) return;
+        setReasonPresets(items);
+        const initialPreset = pickInitialPreset(items);
+        if (initialPreset) {
+          setSelectedReasonPresetId(initialPreset.id);
+          setReason(initialPreset.reasonText);
+        } else {
+          setSelectedReasonPresetId('custom');
+          setReason('');
+        }
+      })
+      .catch((requestError) => {
+        if (!ignore) setError(requestError.message || '처리 사유 목록을 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        if (!ignore) setLoadingReasonPresets(false);
+      });
+    return () => { ignore = true; };
+  }, [canManage]);
+
+  const selectReasonPreset = (presetId) => {
+    setSelectedReasonPresetId(presetId);
+    const preset = reasonPresets.find((item) => item.id === presetId);
+    if (preset) setReason(preset.reasonText);
+  };
 
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
@@ -136,17 +180,26 @@ export function BulkPosDepositPage() {
   };
 
   const openFirstConfirm = () => {
-    if (!canExecute) return;
+    if (!canExecute) {
+      if (!reasonIsValid) setError(normalizedReason ? '처리 사유는 200자 이내로 입력해주세요.' : '처리 사유를 입력해주세요.');
+      return;
+    }
+    setError('');
     setConfirmText('');
     setConfirmStep('first');
   };
 
   const execute = async () => {
-    if (!result?.batch?.id || confirmText !== expectedConfirmText) return;
+    if (!result?.batch?.id || confirmText !== expectedConfirmText || !reasonIsValid) return;
     setLoading(true);
     setError('');
     try {
-      const executed = await executeBulkPosDeposit({ batchId: result.batch.id, confirmText });
+      const executed = await executeBulkPosDeposit({
+        batchId: result.batch.id,
+        confirmText,
+        reasonPresetId: selectedReasonPresetId === 'custom' ? null : selectedReasonPresetId,
+        reason: normalizedReason,
+      });
       setExecutedResult(executed);
       setResult((prev) => ({ ...prev, ...executed, canExecute: false }));
       setConfirmStep(null);
@@ -191,6 +244,39 @@ export function BulkPosDepositPage() {
       {result ? (
         <>
           <ResultSummary result={result} />
+          <Card title="처리 사유">
+            {loadingReasonPresets ? <Loading label="처리 사유 목록을 불러오는 중입니다." /> : null}
+            {!loadingReasonPresets ? (
+              <div className="field-group">
+                <Select
+                  label="처리 사유 프리셋"
+                  value={selectedReasonPresetId}
+                  onChange={(event) => selectReasonPreset(event.target.value)}
+                  disabled={!canManage || loading}
+                >
+                  {reasonPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>{preset.label}</option>
+                  ))}
+                  <option value="custom">직접 입력</option>
+                </Select>
+                {!reasonPresets.length ? (
+                  <p className="field-help">등록된 지급 사유가 없습니다. 직접 입력해주세요.</p>
+                ) : null}
+                <Textarea
+                  label="처리 사유 상세"
+                  rows="3"
+                  maxLength="200"
+                  value={reason}
+                  onChange={(event) => { setReason(event.target.value); setSelectedReasonPresetId('custom'); }}
+                  placeholder="transactions.description, metadata, 관리자 감사 로그에 저장됩니다."
+                  disabled={!canManage || loading}
+                />
+                <p className={reasonIsValid ? 'field-help' : 'field-error'}>
+                  {reasonIsValid ? '일괄 지급 전체 건에 동일한 처리 사유가 적용됩니다.' : '처리 사유를 1~200자 이내로 입력해주세요.'}
+                </p>
+              </div>
+            ) : null}
+          </Card>
           <Card
             title={`검증 결과 (${result.items.length.toLocaleString('ko-KR')}건)`}
             actions={(
@@ -229,6 +315,7 @@ export function BulkPosDepositPage() {
           <div><span>파일명</span><strong>{parsed?.fileName || result?.batch?.fileName || '-'}</strong></div>
           <div><span>지급 가능 건수</span><strong>{formatNumber(result?.summary?.payableRows ?? 0)}건</strong></div>
           <div><span>총 지급 수량</span><strong>{formatNumber(result?.summary?.totalAmount ?? 0)} STOC</strong></div>
+          <div><span>처리 사유</span><strong>{normalizedReason || '-'}</strong></div>
         </div>
       </Modal>
 
@@ -239,7 +326,7 @@ export function BulkPosDepositPage() {
         footer={(
           <>
             <Button variant="secondary" onClick={() => setConfirmStep(null)}>취소</Button>
-            <Button variant="danger" disabled={confirmText !== expectedConfirmText || loading} onClick={execute}>최종 지급 실행</Button>
+            <Button variant="danger" disabled={confirmText !== expectedConfirmText || !reasonIsValid || loading} onClick={execute}>최종 지급 실행</Button>
           </>
         )}
       >
@@ -249,6 +336,7 @@ export function BulkPosDepositPage() {
         </p>
         <div className="summary-box">
           <div><span>확인 문구</span><strong>{expectedConfirmText || '-'}</strong></div>
+          <div><span>처리 사유</span><strong>{normalizedReason || '-'}</strong></div>
         </div>
         <Input label="확인 문구 입력" value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder={expectedConfirmText} />
       </Modal>

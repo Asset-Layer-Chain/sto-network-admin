@@ -19,10 +19,12 @@ export async function validateBulkPosDeposit({ fileName, fileHash, rows }) {
   return normalizeValidationResult(result);
 }
 
-export async function executeBulkPosDeposit({ batchId, confirmText }) {
+export async function executeBulkPosDeposit({ batchId, confirmText, reasonPresetId = null, reason }) {
   const result = await callRpc('rpc_admin_execute_bulk_pos_deposit', {
     p_batch_id: batchId,
     p_confirm_text: confirmText,
+    p_reason_preset_id: reasonPresetId || null,
+    p_reason: reason,
   });
   return {
     batch: result?.batch || null,

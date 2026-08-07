@@ -29,6 +29,8 @@ const ERROR_MESSAGES = {
   BULK_POS_BATCH_NOT_FOUND: '일괄 지급 검증 내역을 찾지 못했습니다.',
   BULK_POS_BATCH_NOT_VALIDATED: '검증 완료 상태의 일괄 지급만 실행할 수 있습니다.',
   BULK_POS_CONFIRM_TEXT_INVALID: '최종 확인 문구가 일치하지 않습니다.',
+  BULK_POS_REASON_REQUIRED: '일괄 지급 처리 사유를 입력해주세요.',
+  BULK_POS_REASON_TOO_LONG: '일괄 지급 처리 사유는 200자 이내로 입력해주세요.',
   IDEMPOTENCY_KEY_REQUIRED: '요청 식별값이 없습니다.',
   INSUFFICIENT_BALANCE: '회원의 보유 잔액이 부족합니다.',
   CHAT_ROOM_NOT_FOUND: '채팅방을 찾을 수 없습니다.',
