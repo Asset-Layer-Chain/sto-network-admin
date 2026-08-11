@@ -27,7 +27,7 @@ export function AdminLogPage() {
 
   return (
     <AdminLayout active="admin-logs">
-      <PageHeader title="관리자 작업 로그" description="자산 관리 작업의 변경 전후 데이터를 조회합니다." />
+      <PageHeader title="관리자 작업 로그" description="자산 관리 작업의 변경 전후 데이터를 빠르게 조회합니다." />
       <Card><form className="filter-grid" onSubmit={apply}>
         <Input label="검색" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} placeholder="관리자, 대상 회원, 사유, 요청 ID" />
         <Select label="작업 유형" value={filters.actionType} onChange={(e) => setFilters({ ...filters, actionType: e.target.value })}><option value="">전체</option><option value="wallet.deposit">wallet.deposit</option><option value="wallet.withdrawal">wallet.withdrawal</option><option value="wallet.airdrop">wallet.airdrop</option></Select>
