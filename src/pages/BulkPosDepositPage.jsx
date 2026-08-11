@@ -6,6 +6,7 @@ import { AdminLayout } from '../components/AdminLayout.jsx';
 import { Badge, Button, Card, EmptyState, Input, Loading, Modal, PageHeader, Select, Textarea } from '../components/Common.jsx';
 import { BULK_POS_REQUIRED_HEADERS, parseBulkPosExcel } from '../utils/bulkPosExcel.js';
 import { formatNumber } from '../utils/format.js';
+import { formatPhoneNumberOrDash } from '../utils/phone.js';
 
 const STATUS_LABELS = {
   PAYABLE: '지급 가능',
@@ -87,7 +88,7 @@ function ResultTable({ items }) {
                 <td>{getItemValue(item, 'rowNo') || '-'}</td>
                 <td>{getItemValue(item, 'excelMemberName') || getItemValue(item, 'memberName') || '-'}</td>
                 <td>{getItemValue(item, 'dbMemberName') || '-'}</td>
-                <td>{getItemValue(item, 'phone') || getItemValue(item, 'normalizedPhone') || '-'}</td>
+                <td>{formatPhoneNumberOrDash(getItemValue(item, 'phone') || getItemValue(item, 'normalizedPhone'))}</td>
                 <td>{getItemValue(item, 'contractPeriod') || '-'}</td>
                 <td><code className="bulk-wallet-address">{walletAddress || '-'}</code></td>
                 <td className="align-right">{formatNumber(getItemValue(item, 'amount'))}</td>

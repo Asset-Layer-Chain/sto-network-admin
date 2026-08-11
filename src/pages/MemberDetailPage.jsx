@@ -6,6 +6,7 @@ import { AssetAdjustmentModal } from '../components/AssetAdjustmentModal.jsx';
 import { Button, Card, CopyButton, EmptyState, Loading, PageHeader, StatusBadge } from '../components/Common.jsx';
 import { navigate } from '../router.js';
 import { formatBoolean, formatDateTime, formatNumber } from '../utils/format.js';
+import { formatPhoneNumber } from '../utils/phone.js';
 
 const COPYABLE_DETAIL_KEYS = new Set([
   'user_id',
@@ -55,14 +56,16 @@ const MEMBER_DETAIL_HIDDEN_KEYS = new Set([
 
 function renderValue(key, value) {
   if (value === null || value === undefined || value === '') return '-';
+  if (key === 'mb_hp') return formatPhoneNumber(value) || '-';
   if (typeof value === 'boolean') return formatBoolean(value);
   if (typeof value === 'object') return <pre className="json-view">{JSON.stringify(value, null, 2)}</pre>;
   if (key.endsWith('_at') || key.includes('date')) return formatDateTime(value);
   return String(value);
 }
 
-function getCopyValue(value) {
+function getCopyValue(key, value) {
   if (value === null || value === undefined || value === '') return '';
+  if (key === 'mb_hp') return formatPhoneNumber(value);
   if (typeof value === 'object') return JSON.stringify(value, null, 2);
   return String(value);
 }
@@ -96,7 +99,7 @@ function ObjectFields({ data, emptyTitle, emptyDescription, excludeKeys }) {
       {entries.map(([key, value]) => (
         <div key={key} className={typeof value === 'object' && value !== null ? 'detail-wide' : ''}>
           <dt>{key}</dt>
-          <dd>{renderValue(key, value)}{shouldShowCopy(key, value) ? <CopyButton value={getCopyValue(value)} /> : null}</dd>
+          <dd>{renderValue(key, value)}{shouldShowCopy(key, value) ? <CopyButton value={getCopyValue(key, value)} /> : null}</dd>
         </div>
       ))}
     </dl>

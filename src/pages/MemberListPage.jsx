@@ -5,6 +5,7 @@ import { AdminLayout } from '../components/AdminLayout.jsx';
 import { Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Select, StatusBadge } from '../components/Common.jsx';
 import { navigate } from '../router.js';
 import { formatDateTime, formatNumber, truncate } from '../utils/format.js';
+import { formatPhoneNumberOrDash } from '../utils/phone.js';
 
 const initialFilters = {
   search: '', status: '', role: '', signupMethod: '', regChannel: '', isDeleted: '',
@@ -96,7 +97,7 @@ export function MemberListPage() {
                 <tr key={member.user_id} className="clickable-row" onClick={() => navigate(`/members/${member.user_id}`)}>
                   <td>{member.mb_no}</td>
                   <td><strong>{member.mb_name}</strong><small>{member.mb_id}<br />{truncate(member.user_id, 12)}</small></td>
-                  <td>{member.mb_email}<small>{member.mb_hp || '-'}</small></td>
+                  <td>{member.mb_email}<small>{formatPhoneNumberOrDash(member.mb_hp)}</small></td>
                   <td><StatusBadge value={member.status} />{member.is_del ? <small className="text-danger">삭제 표시</small> : null}</td>
                   <td><StatusBadge value={member.role} /></td>
                   <td className="align-right"><strong>{formatNumber(member.internal_stoc_balance)}</strong></td>

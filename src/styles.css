@@ -143,7 +143,7 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
 .detail-grid > div { min-width: 0; padding: 12px 14px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .detail-grid > div:nth-child(3n) { border-right: 0; }
 .detail-grid dt { margin-bottom: 6px; color: #6b7280; font-size: 11px; font-weight: 800; word-break: break-all; }
-.detail-grid dd { margin: 0; font-size: 13px; word-break: break-word; }
+.detail-grid dd { margin: 0; font-size: 20px; word-break: break-word; }
 .detail-grid .detail-wide { grid-column: 1 / -1; border-right: 0; }
 .copy-button { margin-left: 6px; border: 0; background: #f3f4f6; color: #4b5563; border-radius: 5px; padding: 3px 6px; font-size: 10px; cursor: pointer; }
 .copy-button-copied { background: #dcfce7; color: #166534; }
