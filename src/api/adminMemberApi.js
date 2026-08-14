@@ -26,6 +26,14 @@ export function getMember(userId) {
   return callRpc('rpc_admin_get_member', { p_user_id: userId });
 }
 
+export function updateMemberName({ userId, name, reason }) {
+  return callRpc('rpc_admin_update_member_name', {
+    p_user_id: userId,
+    p_name: name,
+    p_reason: reason,
+  });
+}
+
 export async function searchMembers(search, { limit = 30, excludeRoomId = null } = {}) {
   const result = await callRpc('rpc_admin_search_members', {
     p_search: search || null,

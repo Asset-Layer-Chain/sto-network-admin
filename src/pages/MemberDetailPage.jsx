@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { getMember } from '../api/adminMemberApi.js';
 import { AdminLayout } from '../components/AdminLayout.jsx';
 import { AssetAdjustmentModal } from '../components/AssetAdjustmentModal.jsx';
+import { MemberNameEditModal } from '../components/MemberNameEditModal.jsx';
 import { Button, Card, CopyButton, EmptyState, Loading, PageHeader, StatusBadge } from '../components/Common.jsx';
 import { navigate } from '../router.js';
 import { formatBoolean, formatDateTime, formatNumber } from '../utils/format.js';
@@ -86,7 +87,7 @@ function WalletAddressCell({ wallet }) {
   );
 }
 
-function ObjectFields({ data, emptyTitle, emptyDescription, excludeKeys }) {
+function ObjectFields({ data, emptyTitle, emptyDescription, excludeKeys, onEditMemberName }) {
   const entries = data && typeof data === 'object' && !Array.isArray(data)
     ? Object.entries(data).filter(([key]) => !excludeKeys?.has(key))
     : [];
@@ -99,7 +100,11 @@ function ObjectFields({ data, emptyTitle, emptyDescription, excludeKeys }) {
       {entries.map(([key, value]) => (
         <div key={key} className={typeof value === 'object' && value !== null ? 'detail-wide' : ''}>
           <dt>{key}</dt>
-          <dd>{renderValue(key, value)}{shouldShowCopy(key, value) ? <CopyButton value={getCopyValue(key, value)} /> : null}</dd>
+          <dd>
+            {renderValue(key, value)}
+            {key === 'mb_name' && onEditMemberName ? <Button variant="secondary" size="sm" className="detail-edit-button" onClick={onEditMemberName}>변경</Button> : null}
+            {shouldShowCopy(key, value) ? <CopyButton value={getCopyValue(key, value)} /> : null}
+          </dd>
         </div>
       ))}
     </dl>
@@ -141,6 +146,7 @@ export function MemberDetailPage({ userId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [action, setAction] = useState(null);
+  const [nameEditOpen, setNameEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -181,7 +187,7 @@ export function MemberDetailPage({ userId }) {
             <Card><span className="summary-label">가입일</span><strong className="summary-text">{formatDateTime(member.created_at)}</strong></Card>
           </div>
 
-          <Card title="member 전체 컬럼"><ObjectFields data={member} excludeKeys={MEMBER_DETAIL_HIDDEN_KEYS} /></Card>
+          <Card title="member 전체 컬럼"><ObjectFields data={member} excludeKeys={MEMBER_DETAIL_HIDDEN_KEYS} onEditMemberName={() => setNameEditOpen(true)} /></Card>
 
           <Card title={`지갑 계정 (${data.walletAccounts?.length || 0})`}>
             {!data.walletAccounts?.length ? <EmptyState /> : <div className="table-wrap"><table><thead><tr><th>asset_code</th><th>account_type</th><th>chain</th><th>address</th><th className="align-right">available_balance</th><th className="align-right">locked_balance</th><th>updated_at</th></tr></thead><tbody>{data.walletAccounts.map((wallet) => <tr key={wallet.id}><td>{wallet.asset_code}</td><td>{wallet.account_type}</td><td>{wallet.chain || '-'}</td><td><WalletAddressCell wallet={wallet} /></td><td className="align-right">{formatNumber(wallet.available_balance)}</td><td className="align-right">{formatNumber(wallet.locked_balance)}</td><td>{formatDateTime(wallet.updated_at)}</td></tr>)}</tbody></table></div>}
@@ -202,6 +208,7 @@ export function MemberDetailPage({ userId }) {
         </div>
       ) : null}
       <AssetAdjustmentModal open={Boolean(action)} member={actionMember} action={action} onClose={() => setAction(null)} onCompleted={load} />
+      <MemberNameEditModal open={nameEditOpen} member={member} onClose={() => setNameEditOpen(false)} onCompleted={load} />
     </AdminLayout>
   );
 }
