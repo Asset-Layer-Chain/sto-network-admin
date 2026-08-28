@@ -5,7 +5,7 @@ import { Button, Card, EmptyState, Input, Loading, PageHeader, Pagination, Selec
 import { navigate } from '../router.js';
 import { formatDateTime, formatNumber } from '../utils/format.js';
 
-const initial = { search: '', transactionType: '', status: '', assetCode: 'STOC_INT', userId: '', fromAt: '', toAt: '', page: 1, pageSize: 30 };
+const initial = { search: '', transactionType: 'deposit', status: '', assetCode: 'STOC_INT', userId: '', fromAt: '', toAt: '', page: 1, pageSize: 30 };
 
 export function TransactionListPage() {
   const [filters, setFilters] = useState(initial);

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { getAuthRedirectUrl, isSupabaseConfigured } from '../config/env.js';
 import { getSupabaseClient } from '../api/supabaseClient.js';
 import { callRpc, normalizeError } from '../api/rpcClient.js';
@@ -20,6 +20,8 @@ export function AuthProvider({ children }) {
     error: null,
     accessDenied: false,
   });
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const refreshAdmin = useCallback(async (sessionOverride) => {
     if (!isSupabaseConfigured()) {
@@ -63,7 +65,24 @@ export function AuthProvider({ children }) {
 
     const supabase = getSupabaseClient();
     refreshAdmin();
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') return;
+
+      if (event === 'TOKEN_REFRESHED') {
+        if (!session) return;
+        setState((prev) => ({ ...prev, session, user: session.user }));
+        return;
+      }
+
+      if (event === 'SIGNED_IN') {
+        const current = stateRef.current;
+        const sameAdminSession = current.admin && current.user?.id === session?.user?.id;
+        if (sameAdminSession) {
+          setState((prev) => ({ ...prev, session, user: session.user }));
+          return;
+        }
+      }
+
       queueMicrotask(() => refreshAdmin(session));
     });
 
