@@ -10,20 +10,50 @@ const initial = { search: '', transactionType: 'deposit', status: '', assetCode:
 export function TransactionListPage() {
   const [filters, setFilters] = useState(initial);
   const [applied, setApplied] = useState(initial);
-  const [result, setResult] = useState({ items: [], totalCount: 0, page: 1, pageSize: 30 });
+  const [pageCursors, setPageCursors] = useState({ 1: null });
+  const [result, setResult] = useState({ items: [], totalCount: 0, page: 1, pageSize: 30, hasNext: false, nextCursor: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
-    try { setResult(await listTransactions(applied)); }
-    catch (requestError) { setError(requestError.message); }
-    finally { setLoading(false); }
+    try {
+      const nextResult = await listTransactions(applied);
+      setResult((prev) => ({
+        ...nextResult,
+        totalCount: nextResult.totalCount == null ? prev.totalCount : nextResult.totalCount,
+      }));
+      if (nextResult.hasNext && nextResult.nextCursor) {
+        setPageCursors((prev) => ({ ...prev, [nextResult.page + 1]: nextResult.nextCursor }));
+      }
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
   }, [applied]);
   useEffect(() => { load(); }, [load]);
 
-  const apply = (event) => { event.preventDefault(); setApplied({ ...filters, page: 1 }); setFilters((prev) => ({ ...prev, page: 1 })); };
-  const changePage = (page) => { setFilters((prev) => ({ ...prev, page })); setApplied((prev) => ({ ...prev, page })); };
+  const apply = (event) => {
+    event.preventDefault();
+    const next = { ...filters, page: 1 };
+    setPageCursors({ 1: null });
+    setApplied({ ...next, cursor: null, includeTotal: true });
+    setFilters(next);
+  };
+
+  const reset = () => {
+    setPageCursors({ 1: null });
+    setFilters(initial);
+    setApplied({ ...initial, cursor: null, includeTotal: true });
+  };
+
+  const changePage = (page) => {
+    const cursor = pageCursors[page] ?? null;
+    if (page > 1 && !cursor) return;
+    setFilters((prev) => ({ ...prev, page }));
+    setApplied((prev) => ({ ...prev, page, cursor, includeTotal: false }));
+  };
 
   return (
     <AdminLayout active="transactions">
@@ -36,7 +66,7 @@ export function TransactionListPage() {
         <Input label="회원 UUID" value={filters.userId} onChange={(e) => setFilters({ ...filters, userId: e.target.value })} placeholder="선택 입력" />
         <Input label="시작일" type="datetime-local" value={filters.fromAt} onChange={(e) => setFilters({ ...filters, fromAt: e.target.value })} />
         <Input label="종료일" type="datetime-local" value={filters.toAt} onChange={(e) => setFilters({ ...filters, toAt: e.target.value })} />
-        <div className="filter-actions"><Button type="submit">조회</Button><Button type="button" variant="secondary" onClick={() => { setFilters(initial); setApplied(initial); }}>초기화</Button></div>
+        <div className="filter-actions"><Button type="submit">조회</Button><Button type="button" variant="secondary" onClick={reset}>초기화</Button></div>
       </form></Card>
       <Card className="table-card">
         {loading ? <Loading /> : null}
