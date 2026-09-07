@@ -44,8 +44,19 @@ function normalizeAmountCell(value) {
   if (!match) return text;
 
   const integer = match[1].replace(/^0+(?=\d)/, '') || '0';
-  const fraction = (match[2] || '').slice(0, 8);
-  return fraction ? `${integer}.${fraction}` : integer;
+  const fraction = match[2] || '';
+  const roundingScale = 3;
+  const paddedFraction = fraction.padEnd(roundingScale + 1, '0');
+  const baseFraction = paddedFraction.slice(0, roundingScale);
+  const shouldRoundUp = Number(paddedFraction[roundingScale]) >= 5;
+  const scaled = (BigInt(integer) * (10n ** BigInt(roundingScale)))
+    + BigInt(baseFraction || '0')
+    + (shouldRoundUp ? 1n : 0n);
+  const divisor = 10n ** BigInt(roundingScale);
+  const roundedInteger = scaled / divisor;
+  const roundedFraction = (scaled % divisor).toString().padStart(roundingScale, '0').replace(/0+$/, '');
+
+  return roundedFraction ? `${roundedInteger}.${roundedFraction}` : roundedInteger.toString();
 }
 
 function readUint32(view, offset) {
