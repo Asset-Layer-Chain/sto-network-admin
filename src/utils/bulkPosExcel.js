@@ -40,13 +40,32 @@ function normalizeHeader(value) {
 
 function normalizeAmountCell(value) {
   const text = normalizeCell(value).replace(/,/g, '').replace(/[\s\u00a0]+/g, '');
-  const match = text.match(/^\+?(\d+)(?:\.(\d*))?$/);
+  const match = text.match(/^\+?(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
   if (!match) return text;
 
-  const integer = match[1].replace(/^0+(?=\d)/, '') || '0';
+  const whole = match[1];
   const fraction = match[2] || '';
+  const exponent = Number(match[3] || 0);
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 1000) return text;
+
+  const digits = `${whole}${fraction}`;
+  const decimalPosition = whole.length + exponent;
+  let integer;
+  let decimalFraction;
+  if (decimalPosition <= 0) {
+    integer = '0';
+    decimalFraction = `${'0'.repeat(-decimalPosition)}${digits}`;
+  } else if (decimalPosition >= digits.length) {
+    integer = `${digits}${'0'.repeat(decimalPosition - digits.length)}`;
+    decimalFraction = '';
+  } else {
+    integer = digits.slice(0, decimalPosition);
+    decimalFraction = digits.slice(decimalPosition);
+  }
+
+  integer = integer.replace(/^0+(?=\d)/, '') || '0';
   const roundingScale = 3;
-  const paddedFraction = fraction.padEnd(roundingScale + 1, '0');
+  const paddedFraction = decimalFraction.padEnd(roundingScale + 1, '0');
   const baseFraction = paddedFraction.slice(0, roundingScale);
   const shouldRoundUp = Number(paddedFraction[roundingScale]) >= 5;
   const scaled = (BigInt(integer) * (10n ** BigInt(roundingScale)))
