@@ -4,6 +4,7 @@ import { getMember } from '../api/adminMemberApi.js';
 import { AdminLayout } from '../components/AdminLayout.jsx';
 import { AssetAdjustmentModal } from '../components/AssetAdjustmentModal.jsx';
 import { MemberNameEditModal } from '../components/MemberNameEditModal.jsx';
+import { MemberAccountActionModal } from '../components/MemberAccountActionModal.jsx';
 import { Button, Card, CopyButton, EmptyState, Loading, PageHeader, StatusBadge } from '../components/Common.jsx';
 import { navigate } from '../router.js';
 import { formatBoolean, formatDateTime, formatNumber } from '../utils/format.js';
@@ -147,6 +148,7 @@ export function MemberDetailPage({ userId }) {
   const [error, setError] = useState('');
   const [action, setAction] = useState(null);
   const [nameEditOpen, setNameEditOpen] = useState(false);
+  const [memberAccountAction, setMemberAccountAction] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,6 +161,7 @@ export function MemberDetailPage({ userId }) {
   useEffect(() => { load(); }, [load]);
 
   const member = data?.member || null;
+  const isDeleted = Boolean(member && (member.is_del || member.status === 'deleted'));
   const actionMember = useMemo(() => member ? { ...member, internalStocBalance: data?.internalStocBalance ?? data?.internal_stoc_balance ?? 0 } : null, [member, data]);
 
   return (
@@ -168,6 +171,8 @@ export function MemberDetailPage({ userId }) {
         description={member ? `${member.mb_id} · ${member.mb_email}` : userId}
         actions={<>
           <Button variant="secondary" onClick={() => navigate('/members')}>목록</Button>
+          {member && isDeleted && admin?.permissions?.memberReactivate ? <Button variant="primary" onClick={() => setMemberAccountAction('reactivate')}>회원 복구</Button> : null}
+          {member && !isDeleted && member.status === 'active' && admin?.permissions?.memberPinReset ? <Button variant="secondary" onClick={() => setMemberAccountAction('resetPin')}>PIN 초기화</Button> : null}
           {member && admin?.permissions?.assetDeposit ? <Button onClick={() => setAction('deposit')}>지급</Button> : null}
           {member && admin?.permissions?.assetAirdrop ? <Button variant="purple" onClick={() => setAction('airdrop')}>에어드랍</Button> : null}
           {member && admin?.permissions?.assetWithdrawal ? <Button variant="danger" onClick={() => setAction('withdrawal')}>차감</Button> : null}
@@ -209,6 +214,7 @@ export function MemberDetailPage({ userId }) {
       ) : null}
       <AssetAdjustmentModal open={Boolean(action)} member={actionMember} action={action} onClose={() => setAction(null)} onCompleted={load} />
       <MemberNameEditModal open={nameEditOpen} member={member} onClose={() => setNameEditOpen(false)} onCompleted={load} />
+      <MemberAccountActionModal open={Boolean(memberAccountAction)} action={memberAccountAction} member={member} onClose={() => setMemberAccountAction(null)} onCompleted={load} />
     </AdminLayout>
   );
 }

@@ -42,3 +42,17 @@ export async function searchMembers(search, { limit = 30, excludeRoomId = null }
   });
   return Array.isArray(result) ? result : [];
 }
+
+export function reactivateMember({ userId, reason }) {
+  return callRpc('rpc_admin_reactivate_member', {
+    p_user_id: userId,
+    p_reason: reason,
+  });
+}
+
+export function resetMemberPin({ userId, reason }) {
+  return callRpc('rpc_admin_reset_member_pin', {
+    p_user_id: userId,
+    p_reason: reason,
+  });
+}
