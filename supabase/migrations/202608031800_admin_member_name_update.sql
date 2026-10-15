@@ -100,6 +100,5 @@ begin
   );
 end;
 $$;
-
 revoke all on function public.rpc_admin_update_member_name(uuid, text, text) from public, anon;
 grant execute on function public.rpc_admin_update_member_name(uuid, text, text) to authenticated;

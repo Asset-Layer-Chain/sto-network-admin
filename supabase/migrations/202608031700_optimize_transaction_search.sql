@@ -14,16 +14,12 @@
 
 create index if not exists transactions_admin_sender_created_idx
   on public.transactions (sender_user_id, created_at desc, id desc);
-
 create index if not exists transactions_admin_receiver_created_idx
   on public.transactions (receiver_user_id, created_at desc, id desc);
-
 create index if not exists transactions_admin_created_id_idx
   on public.transactions (created_at desc, id desc);
-
 create index if not exists member_admin_mb_id_lower_idx
   on public.member (lower(mb_id));
-
 create or replace function public.rpc_admin_list_transactions(
   p_search text default null,
   p_transaction_type text default null,
@@ -207,6 +203,5 @@ begin
   );
 end;
 $$;
-
 revoke all on function public.rpc_admin_list_transactions(text, text, text, text, uuid, timestamptz, timestamptz, integer, integer) from public, anon;
 grant execute on function public.rpc_admin_list_transactions(text, text, text, text, uuid, timestamptz, timestamptz, integer, integer) to authenticated;

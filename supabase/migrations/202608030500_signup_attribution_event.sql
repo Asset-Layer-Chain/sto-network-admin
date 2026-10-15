@@ -5,7 +5,6 @@
 create index if not exists idx_marketing_attribution_events_signup_user_received
 on public.marketing_attribution_events (user_id, client_received_at desc, created_at desc)
 where event_type = 'signup';
-
 create or replace function public.rpc_admin_get_member(p_user_id uuid)
 returns jsonb
 language plpgsql

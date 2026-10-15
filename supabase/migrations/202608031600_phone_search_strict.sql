@@ -4,7 +4,6 @@
 
 create index if not exists member_admin_phone_digits_idx
   on public.member (private.normalize_admin_bulk_pos_phone(mb_hp));
-
 create or replace function public.rpc_admin_list_members(
   p_search text default null,
   p_status text default null,
@@ -198,7 +197,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_search_members(
   p_search text default null,
   p_limit integer default 30,
@@ -279,9 +277,7 @@ begin
   return coalesce(v_result, '[]'::jsonb);
 end;
 $$;
-
 revoke all on function public.rpc_admin_list_members(text, text, text, text, text, boolean, integer, integer, text, text) from public, anon;
 revoke all on function public.rpc_admin_search_members(text, integer, uuid) from public, anon;
-
 grant execute on function public.rpc_admin_list_members(text, text, text, text, text, boolean, integer, integer, text, text) to authenticated;
 grant execute on function public.rpc_admin_search_members(text, integer, uuid) to authenticated;

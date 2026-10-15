@@ -4,17 +4,14 @@
 
 create index if not exists wallet_addresses_bulk_pos_address_user_idx
   on public.wallet_addresses (lower(trim(coalesce(address, ''))), user_id);
-
 create index if not exists transactions_bulk_pos_completed_file_hash_idx
   on public.transactions ((metadata ->> 'file_hash'))
   where reference_type = 'admin_bulk_pos_deposit'
     and status = 'completed';
-
 create index if not exists member_bulk_pos_name_phone_active_idx
   on public.member (lower(trim(coalesce(mb_name, ''))), private.normalize_admin_bulk_pos_phone(mb_hp))
   where coalesce(is_del, false) = false
     and coalesce(status, '') <> 'deleted';
-
 create or replace function public.rpc_admin_validate_bulk_pos_deposit(
   p_file_name text,
   p_file_hash text,

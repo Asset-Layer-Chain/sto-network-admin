@@ -4,7 +4,6 @@
 alter table public.admin_bulk_payout_batches
   add column if not exists reason_preset_id uuid references public.admin_transaction_reason_presets(id),
   add column if not exists reason text;
-
 create or replace function private.admin_bulk_payout_batch_payload(p_batch public.admin_bulk_payout_batches)
 returns jsonb
 language sql
@@ -31,9 +30,7 @@ as $$
     'updatedAt', p_batch.updated_at
   );
 $$;
-
 revoke all on function private.admin_bulk_payout_batch_payload(public.admin_bulk_payout_batches) from public, anon, authenticated;
-
 create or replace function public.rpc_admin_execute_bulk_pos_deposit(
   p_batch_id uuid,
   p_confirm_text text,
@@ -282,9 +279,6 @@ begin
   );
 end;
 $$;
-
-
-
 create or replace function public.rpc_admin_execute_bulk_pos_deposit(
   p_batch_id uuid,
   p_confirm_text text
@@ -297,9 +291,7 @@ set search_path = ''
 as $$
   select public.rpc_admin_execute_bulk_pos_deposit(p_batch_id, p_confirm_text, null::uuid, 'POS 일괄 지급'::text);
 $$;
-
 revoke all on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text, uuid, text) from public, anon, authenticated;
 revoke all on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text) from public, anon, authenticated;
-
 grant execute on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text, uuid, text) to authenticated;
 grant execute on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text) to authenticated;

@@ -5,7 +5,6 @@
 
 alter table public.admin_bulk_payout_items
   drop constraint if exists admin_bulk_payout_items_status_check;
-
 alter table public.admin_bulk_payout_items
   add constraint admin_bulk_payout_items_status_check
   check (status in (
@@ -19,12 +18,10 @@ alter table public.admin_bulk_payout_items
     'FILE_ALREADY_COMPLETED',
     'FAILED'
   ));
-
 create index if not exists member_bulk_pos_phone_active_idx
   on public.member (private.normalize_admin_bulk_pos_phone(mb_hp), user_id)
   where coalesce(is_del, false) = false
     and coalesce(status, '') <> 'deleted';
-
 create or replace function private.admin_bulk_payout_item_payload(p_item public.admin_bulk_payout_items)
 returns jsonb
 language sql
@@ -52,9 +49,7 @@ as $$
     'updatedAt', p_item.updated_at
   );
 $$;
-
 revoke all on function private.admin_bulk_payout_item_payload(public.admin_bulk_payout_items) from public, anon, authenticated;
-
 create or replace function public.rpc_admin_validate_bulk_pos_deposit(
   p_file_name text,
   p_file_hash text,
@@ -335,8 +330,6 @@ begin
   );
 end;
 $$;
-
-
 -- 실행 직전 재검증도 연락처+지갑주소 기준으로 맞춘다.
 create or replace function public.rpc_admin_execute_bulk_pos_deposit(
   p_batch_id uuid,
@@ -589,9 +582,6 @@ begin
   );
 end;
 $$;
-
-
-
 create or replace function public.rpc_admin_execute_bulk_pos_deposit(
   p_batch_id uuid,
   p_confirm_text text
@@ -604,9 +594,7 @@ set search_path = ''
 as $$
   select public.rpc_admin_execute_bulk_pos_deposit(p_batch_id, p_confirm_text, null::uuid, 'POS 일괄 지급'::text);
 $$;
-
 revoke all on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text, uuid, text) from public, anon, authenticated;
 revoke all on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text) from public, anon, authenticated;
-
 grant execute on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text, uuid, text) to authenticated;
 grant execute on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text) to authenticated;

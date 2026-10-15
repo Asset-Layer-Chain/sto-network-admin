@@ -26,10 +26,8 @@ as $$
     or p_user_id::text = trim(coalesce(p_search, ''))
     or p_member_no::text = trim(coalesce(p_search, ''));
 $$;
-
 revoke all on function private.team_lead_member_search_match(uuid, bigint, text, text, text, text, text)
   from public, anon, authenticated;
-
 create or replace function public.rpc_admin_get_session()
 returns jsonb
 language plpgsql
@@ -74,7 +72,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_list_members(
   p_search text default null,
   p_status text default null,
@@ -236,7 +233,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_search_members(
   p_search text default null,
   p_limit integer default 30,
@@ -312,11 +308,9 @@ begin
   return coalesce(v_result, '[]'::jsonb);
 end;
 $$;
-
 revoke all on function public.rpc_admin_get_session() from public, anon;
 revoke all on function public.rpc_admin_list_members(text, text, text, text, text, boolean, integer, integer, text, text) from public, anon;
 revoke all on function public.rpc_admin_search_members(text, integer, uuid) from public, anon;
-
 grant execute on function public.rpc_admin_get_session() to authenticated;
 grant execute on function public.rpc_admin_list_members(text, text, text, text, text, boolean, integer, integer, text, text) to authenticated;
 grant execute on function public.rpc_admin_search_members(text, integer, uuid) to authenticated;

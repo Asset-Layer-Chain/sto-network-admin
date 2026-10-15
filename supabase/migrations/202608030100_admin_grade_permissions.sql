@@ -12,10 +12,8 @@ create table if not exists public.admin_profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists admin_profiles_grade_active_idx
   on public.admin_profiles(admin_grade, is_active);
-
 create or replace function private.touch_admin_profiles_updated_at()
 returns trigger
 language plpgsql
@@ -27,16 +25,13 @@ begin
   return new;
 end;
 $$;
-
 revoke all on function private.touch_admin_profiles_updated_at() from public, anon, authenticated;
 drop trigger if exists admin_profiles_touch_updated_at on public.admin_profiles;
 create trigger admin_profiles_touch_updated_at
 before update on public.admin_profiles
 for each row execute function private.touch_admin_profiles_updated_at();
-
 alter table public.admin_profiles enable row level security;
 revoke all on public.admin_profiles from public, anon, authenticated;
-
 create or replace function private.admin_grade_for(
   p_user_id uuid,
   p_member_role text
@@ -70,7 +65,6 @@ begin
   return null;
 end;
 $$;
-
 create or replace function private.require_admin_asset_permission(
   p_user_id uuid,
   p_member_role text,
@@ -107,10 +101,8 @@ begin
   return v_grade;
 end;
 $$;
-
 revoke all on function private.admin_grade_for(uuid, text) from public, anon, authenticated;
 revoke all on function private.require_admin_asset_permission(uuid, text, text) from public, anon, authenticated;
-
 create or replace function public.rpc_admin_get_session()
 returns jsonb
 language plpgsql
@@ -153,7 +145,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_adjust_stoc(
   p_target_user_id uuid,
   p_action text,
@@ -338,7 +329,6 @@ begin
   );
 end;
 $$;
-
 revoke all on function public.rpc_admin_get_session() from public, anon;
 revoke all on function public.rpc_admin_adjust_stoc(uuid, text, numeric, text, text) from public, anon;
 grant execute on function public.rpc_admin_get_session() to authenticated;

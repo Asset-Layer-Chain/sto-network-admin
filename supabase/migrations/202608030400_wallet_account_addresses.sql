@@ -4,14 +4,11 @@
 
 create index if not exists idx_wallet_addresses_lower_address
 on public.wallet_addresses (lower(address));
-
 create index if not exists idx_wallet_addresses_user_asset_chain
 on public.wallet_addresses (user_id, asset_code, chain);
-
 create index if not exists idx_wallet_addresses_user_chain_stoc_int
 on public.wallet_addresses (user_id, chain)
 where asset_code = 'STOC_INT';
-
 create or replace function public.rpc_admin_list_members(
   p_search text default null,
   p_status text default null,
@@ -199,7 +196,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_get_member(p_user_id uuid)
 returns jsonb
 language plpgsql

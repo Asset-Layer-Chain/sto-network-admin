@@ -4,7 +4,6 @@
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
 create schema if not exists private;
-
 -- ---------------------------------------------------------------------------
 -- 관리자 감사 로그
 -- ---------------------------------------------------------------------------
@@ -22,7 +21,6 @@ create table if not exists public.admin_action_logs (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-
 create index if not exists admin_action_logs_created_idx
   on public.admin_action_logs(created_at desc);
 create index if not exists admin_action_logs_actor_created_idx
@@ -38,10 +36,8 @@ create index if not exists admin_action_logs_action_created_idx
 create unique index if not exists admin_action_logs_idempotency_uidx
   on public.admin_action_logs(idempotency_key)
   where idempotency_key is not null;
-
 alter table public.admin_action_logs enable row level security;
 revoke all on public.admin_action_logs from public, anon, authenticated;
-
 -- ---------------------------------------------------------------------------
 -- 관리자 권한 및 payload helper
 -- ---------------------------------------------------------------------------
@@ -78,7 +74,6 @@ begin
   return v_member;
 end;
 $$;
-
 create or replace function private.require_super_admin()
 returns public.member
 language plpgsql
@@ -96,7 +91,6 @@ begin
   return v_member;
 end;
 $$;
-
 create or replace function private.admin_transaction_payload(p_transaction_id uuid)
 returns jsonb
 language sql
@@ -143,7 +137,6 @@ as $$
      where t.id = p_transaction_id
   ), 'null'::jsonb);
 $$;
-
 create or replace function private.admin_chat_message_payload(p_message_id bigint)
 returns jsonb
 language sql
@@ -170,7 +163,6 @@ as $$
      where cm.id = p_message_id
   ), 'null'::jsonb);
 $$;
-
 create or replace function private.admin_chat_room_payload(p_room_id uuid, p_admin_user_id uuid)
 returns jsonb
 language plpgsql
@@ -250,13 +242,11 @@ begin
   );
 end;
 $$;
-
 revoke all on function private.require_admin() from public, anon, authenticated;
 revoke all on function private.require_super_admin() from public, anon, authenticated;
 revoke all on function private.admin_transaction_payload(uuid) from public, anon, authenticated;
 revoke all on function private.admin_chat_message_payload(bigint) from public, anon, authenticated;
 revoke all on function private.admin_chat_room_payload(uuid, uuid) from public, anon, authenticated;
-
 -- 모든 쓰기 경로에서 그룹 채팅방 활성 인원을 100명으로 제한한다.
 create or replace function private.enforce_chat_room_member_limit()
 returns trigger
@@ -286,13 +276,11 @@ begin
   return new;
 end;
 $$;
-
 revoke all on function private.enforce_chat_room_member_limit() from public, anon, authenticated;
 drop trigger if exists chat_members_enforce_max_100 on public.chat_members;
 create trigger chat_members_enforce_max_100
 before insert or update of left_at on public.chat_members
 for each row execute function private.enforce_chat_room_member_limit();
-
 -- ---------------------------------------------------------------------------
 -- 관리자 세션
 -- ---------------------------------------------------------------------------
@@ -326,7 +314,6 @@ begin
   );
 end;
 $$;
-
 -- ---------------------------------------------------------------------------
 -- 회원 조회
 -- ---------------------------------------------------------------------------
@@ -458,7 +445,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_search_members(
   p_search text default null,
   p_limit integer default 30,
@@ -515,7 +501,6 @@ begin
   return coalesce(v_result, '[]'::jsonb);
 end;
 $$;
-
 create or replace function public.rpc_admin_get_member(p_user_id uuid)
 returns jsonb
 language plpgsql
@@ -626,7 +611,6 @@ begin
   );
 end;
 $$;
-
 -- ---------------------------------------------------------------------------
 -- 자산 조정 및 거래 조회
 -- ---------------------------------------------------------------------------
@@ -800,7 +784,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_list_transactions(
   p_search text default null,
   p_transaction_type text default null,
@@ -891,7 +874,6 @@ begin
   );
 end;
 $$;
-
 -- ---------------------------------------------------------------------------
 -- 그룹 채팅 관리 (최대 100명)
 -- ---------------------------------------------------------------------------
@@ -944,7 +926,6 @@ begin
   return jsonb_build_object('items', coalesce(v_items, '[]'::jsonb), 'page', v_page, 'pageSize', v_page_size, 'totalCount', coalesce(v_total, 0));
 end;
 $$;
-
 create or replace function public.rpc_admin_get_chat_room(p_room_id uuid)
 returns jsonb
 language plpgsql
@@ -964,7 +945,6 @@ begin
   return v_result;
 end;
 $$;
-
 create or replace function public.rpc_admin_create_chat_room(p_title text, p_member_ids uuid[])
 returns jsonb
 language plpgsql
@@ -1031,7 +1011,6 @@ begin
   return private.admin_chat_room_payload(v_room_id, v_admin.user_id);
 end;
 $$;
-
 create or replace function public.rpc_admin_update_chat_room(p_room_id uuid, p_title text)
 returns jsonb
 language plpgsql
@@ -1066,7 +1045,6 @@ begin
   return v_after;
 end;
 $$;
-
 create or replace function public.rpc_admin_add_chat_members(p_room_id uuid, p_member_ids uuid[])
 returns jsonb
 language plpgsql
@@ -1144,7 +1122,6 @@ begin
   return v_after;
 end;
 $$;
-
 create or replace function public.rpc_admin_remove_chat_members(
   p_room_id uuid,
   p_member_ids uuid[],
@@ -1211,7 +1188,6 @@ begin
   return v_after;
 end;
 $$;
-
 create or replace function public.rpc_admin_join_chat_room(p_room_id uuid)
 returns jsonb
 language plpgsql
@@ -1258,7 +1234,6 @@ begin
   return private.admin_chat_room_payload(p_room_id, v_admin.user_id);
 end;
 $$;
-
 create or replace function public.rpc_admin_get_chat_messages(
   p_room_id uuid,
   p_before_message_id bigint default null,
@@ -1294,7 +1269,6 @@ begin
   return coalesce(v_result, '[]'::jsonb);
 end;
 $$;
-
 create or replace function public.rpc_admin_get_chat_message(p_message_id bigint)
 returns jsonb
 language plpgsql
@@ -1314,7 +1288,6 @@ begin
   return v_result;
 end;
 $$;
-
 -- 관리자 Realtime 조회 허용. 실제 변경은 RPC만 허용한다.
 drop policy if exists chat_rooms_select_admin on public.chat_rooms;
 create policy chat_rooms_select_admin
@@ -1328,7 +1301,6 @@ using (
        and me.role in ('admin', 'super_admin')
   )
 );
-
 drop policy if exists chat_members_select_admin on public.chat_members;
 create policy chat_members_select_admin
 on public.chat_members for select to authenticated
@@ -1341,7 +1313,6 @@ using (
        and me.role in ('admin', 'super_admin')
   )
 );
-
 drop policy if exists chat_messages_select_admin on public.chat_messages;
 create policy chat_messages_select_admin
 on public.chat_messages for select to authenticated
@@ -1354,7 +1325,6 @@ using (
        and me.role in ('admin', 'super_admin')
   )
 );
-
 -- ---------------------------------------------------------------------------
 -- 관리자 감사 로그 조회
 -- ---------------------------------------------------------------------------
@@ -1447,7 +1417,6 @@ begin
   return jsonb_build_object('items', coalesce(v_items, '[]'::jsonb), 'page', v_page, 'pageSize', v_page_size, 'totalCount', coalesce(v_total, 0));
 end;
 $$;
-
 -- ---------------------------------------------------------------------------
 -- 권한
 -- ---------------------------------------------------------------------------
@@ -1467,7 +1436,6 @@ revoke all on function public.rpc_admin_join_chat_room(uuid) from public, anon;
 revoke all on function public.rpc_admin_get_chat_messages(uuid, bigint, integer) from public, anon;
 revoke all on function public.rpc_admin_get_chat_message(bigint) from public, anon;
 revoke all on function public.rpc_admin_list_action_logs(text, text, uuid, timestamptz, timestamptz, integer, integer) from public, anon;
-
 grant execute on function public.rpc_admin_get_session() to authenticated;
 grant execute on function public.rpc_admin_list_members(text, text, text, text, text, boolean, integer, integer, text, text) to authenticated;
 grant execute on function public.rpc_admin_search_members(text, integer, uuid) to authenticated;
@@ -1484,5 +1452,4 @@ grant execute on function public.rpc_admin_join_chat_room(uuid) to authenticated
 grant execute on function public.rpc_admin_get_chat_messages(uuid, bigint, integer) to authenticated;
 grant execute on function public.rpc_admin_get_chat_message(bigint) to authenticated;
 grant execute on function public.rpc_admin_list_action_logs(text, text, uuid, timestamptz, timestamptz, integer, integer) to authenticated;
-
 select pg_notify('pgrst', 'reload schema');

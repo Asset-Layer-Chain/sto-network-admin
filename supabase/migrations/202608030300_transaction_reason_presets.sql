@@ -14,17 +14,13 @@ create table if not exists public.admin_transaction_reason_presets (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists admin_transaction_reason_presets_action_active_idx
   on public.admin_transaction_reason_presets(action, is_active, sort_order, label);
-
 create unique index if not exists admin_transaction_reason_presets_default_uidx
   on public.admin_transaction_reason_presets(action)
   where is_default and is_active;
-
 alter table public.admin_transaction_reason_presets enable row level security;
 revoke all on public.admin_transaction_reason_presets from public, anon, authenticated;
-
 create or replace function private.touch_admin_transaction_reason_presets_updated_at()
 returns trigger
 language plpgsql
@@ -36,13 +32,11 @@ begin
   return new;
 end;
 $$;
-
 revoke all on function private.touch_admin_transaction_reason_presets_updated_at() from public, anon, authenticated;
 drop trigger if exists admin_transaction_reason_presets_touch_updated_at on public.admin_transaction_reason_presets;
 create trigger admin_transaction_reason_presets_touch_updated_at
 before update on public.admin_transaction_reason_presets
 for each row execute function private.touch_admin_transaction_reason_presets_updated_at();
-
 create or replace function private.require_admin_reason_preset_manage_permission(
   p_user_id uuid,
   p_member_role text
@@ -65,7 +59,6 @@ begin
   return v_grade;
 end;
 $$;
-
 create or replace function private.validate_admin_reason_preset_action(p_action text)
 returns text
 language plpgsql
@@ -82,7 +75,6 @@ begin
   return v_action;
 end;
 $$;
-
 create or replace function private.admin_reason_preset_payload(p_id uuid)
 returns jsonb
 language sql
@@ -106,11 +98,9 @@ as $$
     from public.admin_transaction_reason_presets p
    where p.id = p_id;
 $$;
-
 revoke all on function private.require_admin_reason_preset_manage_permission(uuid, text) from public, anon, authenticated;
 revoke all on function private.validate_admin_reason_preset_action(text) from public, anon, authenticated;
 revoke all on function private.admin_reason_preset_payload(uuid) from public, anon, authenticated;
-
 create or replace function public.rpc_admin_get_session()
 returns jsonb
 language plpgsql
@@ -156,7 +146,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_list_transaction_reason_presets(
   p_action text default null,
   p_include_inactive boolean default false
@@ -199,7 +188,6 @@ begin
   return coalesce(v_items, '[]'::jsonb);
 end;
 $$;
-
 create or replace function public.rpc_admin_create_transaction_reason_preset(
   p_action text,
   p_label text,
@@ -261,7 +249,6 @@ begin
   return private.admin_reason_preset_payload(v_id);
 end;
 $$;
-
 create or replace function public.rpc_admin_update_transaction_reason_preset(
   p_id uuid,
   p_action text,
@@ -338,7 +325,6 @@ begin
   return private.admin_reason_preset_payload(v_id);
 end;
 $$;
-
 create or replace function public.rpc_admin_delete_transaction_reason_preset(p_id uuid)
 returns jsonb
 language plpgsql
@@ -382,38 +368,32 @@ begin
   return private.admin_reason_preset_payload(v_id);
 end;
 $$;
-
 revoke all on function public.rpc_admin_get_session() from public, anon;
 revoke all on function public.rpc_admin_list_transaction_reason_presets(text, boolean) from public, anon;
 revoke all on function public.rpc_admin_create_transaction_reason_preset(text, text, text, integer, boolean) from public, anon;
 revoke all on function public.rpc_admin_update_transaction_reason_preset(uuid, text, text, text, integer, boolean, boolean) from public, anon;
 revoke all on function public.rpc_admin_delete_transaction_reason_preset(uuid) from public, anon;
-
 grant execute on function public.rpc_admin_get_session() to authenticated;
 grant execute on function public.rpc_admin_list_transaction_reason_presets(text, boolean) to authenticated;
 grant execute on function public.rpc_admin_create_transaction_reason_preset(text, text, text, integer, boolean) to authenticated;
 grant execute on function public.rpc_admin_update_transaction_reason_preset(uuid, text, text, text, integer, boolean, boolean) to authenticated;
 grant execute on function public.rpc_admin_delete_transaction_reason_preset(uuid) to authenticated;
-
 insert into public.admin_transaction_reason_presets(action, label, reason_text, sort_order, is_default)
 select 'airdrop', '에어드랍', '에어드랍', 10, true
 where not exists (
   select 1 from public.admin_transaction_reason_presets
    where action = 'airdrop' and label = '에어드랍' and is_active
 );
-
 insert into public.admin_transaction_reason_presets(action, label, reason_text, sort_order, is_default)
 select 'deposit', 'STOC 프리세일 참여', 'STOC 프리세일 참여', 10, true
 where not exists (
   select 1 from public.admin_transaction_reason_presets
    where action = 'deposit' and label = 'STOC 프리세일 참여' and is_active
 );
-
 insert into public.admin_transaction_reason_presets(action, label, reason_text, sort_order, is_default)
 select 'withdrawal', '오지급 회수', '오지급 회수', 10, false
 where not exists (
   select 1 from public.admin_transaction_reason_presets
    where action = 'withdrawal' and label = '오지급 회수' and is_active
 );
-
 select pg_notify('pgrst', 'reload schema');

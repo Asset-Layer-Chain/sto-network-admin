@@ -232,7 +232,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_execute_bulk_pos_deposit(
   p_batch_id uuid,
   p_confirm_text text
@@ -453,8 +452,6 @@ begin
   );
 end;
 $$;
-
 revoke all on function public.rpc_admin_get_session() from public, anon;
-
 revoke all on function public.rpc_admin_validate_bulk_pos_deposit(text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.rpc_admin_validate_bulk_pos_deposit(text, text, jsonb) to authenticated;

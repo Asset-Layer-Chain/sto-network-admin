@@ -19,7 +19,6 @@ create table if not exists public.admin_bulk_payout_batches (
   updated_at timestamptz not null default now(),
   metadata jsonb not null default '{}'::jsonb
 );
-
 create table if not exists public.admin_bulk_payout_items (
   id uuid primary key default extensions.gen_random_uuid(),
   batch_id uuid not null references public.admin_bulk_payout_batches(id) on delete cascade,
@@ -39,26 +38,20 @@ create table if not exists public.admin_bulk_payout_items (
   updated_at timestamptz not null default now(),
   metadata jsonb not null default '{}'::jsonb
 );
-
 create unique index if not exists admin_bulk_payout_batches_completed_file_hash_uidx
   on public.admin_bulk_payout_batches(file_hash)
   where status = 'completed';
-
 create index if not exists admin_bulk_payout_batches_admin_created_idx
   on public.admin_bulk_payout_batches(admin_user_id, created_at desc);
-
 create index if not exists admin_bulk_payout_items_batch_row_idx
   on public.admin_bulk_payout_items(batch_id, row_no);
-
 create index if not exists admin_bulk_payout_items_user_created_idx
   on public.admin_bulk_payout_items(user_id, created_at desc)
   where user_id is not null;
-
 alter table public.admin_bulk_payout_batches enable row level security;
 alter table public.admin_bulk_payout_items enable row level security;
 revoke all on public.admin_bulk_payout_batches from public, anon, authenticated;
 revoke all on public.admin_bulk_payout_items from public, anon, authenticated;
-
 create or replace function private.touch_admin_bulk_payout_updated_at()
 returns trigger
 language plpgsql
@@ -70,19 +63,15 @@ begin
   return new;
 end;
 $$;
-
 revoke all on function private.touch_admin_bulk_payout_updated_at() from public, anon, authenticated;
-
 drop trigger if exists admin_bulk_payout_batches_touch_updated_at on public.admin_bulk_payout_batches;
 create trigger admin_bulk_payout_batches_touch_updated_at
 before update on public.admin_bulk_payout_batches
 for each row execute function private.touch_admin_bulk_payout_updated_at();
-
 drop trigger if exists admin_bulk_payout_items_touch_updated_at on public.admin_bulk_payout_items;
 create trigger admin_bulk_payout_items_touch_updated_at
 before update on public.admin_bulk_payout_items
 for each row execute function private.touch_admin_bulk_payout_updated_at();
-
 create or replace function private.normalize_admin_bulk_pos_phone(p_phone text)
 returns text
 language sql
@@ -92,7 +81,6 @@ set search_path = ''
 as $$
   select regexp_replace(coalesce(p_phone, ''), '[^0-9]', '', 'g');
 $$;
-
 create or replace function private.require_admin_bulk_deposit_permission(
   p_user_id uuid,
   p_member_role text
@@ -113,7 +101,6 @@ begin
   return v_grade;
 end;
 $$;
-
 create or replace function private.admin_bulk_payout_item_payload(p_item public.admin_bulk_payout_items)
 returns jsonb
 language sql
@@ -139,7 +126,6 @@ as $$
     'updatedAt', p_item.updated_at
   );
 $$;
-
 create or replace function private.admin_bulk_payout_batch_payload(p_batch public.admin_bulk_payout_batches)
 returns jsonb
 language sql
@@ -164,12 +150,10 @@ as $$
     'updatedAt', p_batch.updated_at
   );
 $$;
-
 revoke all on function private.normalize_admin_bulk_pos_phone(text) from public, anon, authenticated;
 revoke all on function private.require_admin_bulk_deposit_permission(uuid, text) from public, anon, authenticated;
 revoke all on function private.admin_bulk_payout_item_payload(public.admin_bulk_payout_items) from public, anon, authenticated;
 revoke all on function private.admin_bulk_payout_batch_payload(public.admin_bulk_payout_batches) from public, anon, authenticated;
-
 create or replace function public.rpc_admin_get_session()
 returns jsonb
 language plpgsql
@@ -216,7 +200,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_validate_bulk_pos_deposit(
   p_file_name text,
   p_file_hash text,
@@ -447,7 +430,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.rpc_admin_execute_bulk_pos_deposit(
   p_batch_id uuid,
   p_confirm_text text
@@ -668,11 +650,9 @@ begin
   );
 end;
 $$;
-
 revoke all on function public.rpc_admin_get_session() from public, anon;
 revoke all on function public.rpc_admin_validate_bulk_pos_deposit(text, text, jsonb) from public, anon;
 revoke all on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text) from public, anon;
-
 grant execute on function public.rpc_admin_get_session() to authenticated;
 grant execute on function public.rpc_admin_validate_bulk_pos_deposit(text, text, jsonb) to authenticated;
 grant execute on function public.rpc_admin_execute_bulk_pos_deposit(uuid, text) to authenticated;
