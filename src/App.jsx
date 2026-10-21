@@ -5,6 +5,8 @@ import { LoginPage } from './pages/LoginPage.jsx';
 import { MemberListPage } from './pages/MemberListPage.jsx';
 import { MemberDetailPage } from './pages/MemberDetailPage.jsx';
 import { TransactionListPage } from './pages/TransactionListPage.jsx';
+import { NodeApplicationListPage } from './pages/NodeApplicationListPage.jsx';
+import { NodeApplicationDetailPage } from './pages/NodeApplicationDetailPage.jsx';
 import { ChatRoomListPage } from './pages/ChatRoomListPage.jsx';
 import { ChatRoomDetailPage } from './pages/ChatRoomDetailPage.jsx';
 import { AdminLogPage } from './pages/AdminLogPage.jsx';
@@ -36,11 +38,16 @@ export function App() {
   if (pathname === '/' || pathname === '/auth/callback') return <div className="center-page"><Loading /></div>;
   if (pathname === '/members') return <MemberListPage />;
   if (pathname === '/transactions') return <TransactionListPage />;
+  if (pathname === '/node-applications') return admin?.permissions?.nodeApplicationRead === true ? <NodeApplicationListPage /> : <NotFound />;
   if (pathname === '/transaction-reasons') return <ReasonPresetPage />;
   if (pathname === '/bulk-pos-deposit') return <BulkPosDepositPage />;
   if (pathname === '/chats') return <ChatRoomListPage />;
   if (pathname === '/admin-logs') return <AdminLogPage />;
 
+  const nodeApplicationMatch = pathname.match(/^\/node-applications\/([0-9a-f-]{36})$/i);
+  if (nodeApplicationMatch) return admin?.permissions?.nodeApplicationRead === true
+    ? <NodeApplicationDetailPage applicationId={nodeApplicationMatch[1]} />
+    : <NotFound />;
   const memberMatch = pathname.match(/^\/members\/([0-9a-f-]{36})$/i);
   if (memberMatch) return <MemberDetailPage userId={memberMatch[1]} />;
   const chatMatch = pathname.match(/^\/chats\/([0-9a-f-]{36})$/i);

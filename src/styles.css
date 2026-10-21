@@ -246,3 +246,16 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
   .bulk-summary-grid { grid-template-columns: repeat(2, 1fr); }
   .bulk-upload-box { display: grid; }
 }
+
+/* Node setup applications */
+.node-memo-cell { max-width: 300px; overflow-wrap: anywhere; word-break: break-word; }
+.node-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; margin: 0; }
+.node-detail-field { min-width: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+.node-detail-field:nth-child(2n) { border-right: 0; }
+.node-detail-field dt { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+.node-detail-field dd { margin: 0; font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-response-form { display: grid; gap: 16px; max-width: 800px; }
+.node-response-actions { display: flex; justify-content: flex-end; }
+.node-form-error { margin: 0; color: var(--danger); font-size: 13px; }
+.node-answer-cell { max-width: 420px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-confirm-answer { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; font-size: 14px; line-height: 1.6; }
