@@ -14,11 +14,14 @@ export function TransactionListPage() {
   const [result, setResult] = useState({ items: [], totalCount: 0, page: 1, pageSize: 30, hasNext: false, nextCursor: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [jumpInput, setJumpInput] = useState('1');
+  const [jumpError, setJumpError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
       const nextResult = await listTransactions(applied);
+      setJumpInput(String(nextResult.page));
       setResult((prev) => ({
         ...nextResult,
         totalCount: nextResult.totalCount == null ? prev.totalCount : nextResult.totalCount,
@@ -38,21 +41,42 @@ export function TransactionListPage() {
     event.preventDefault();
     const next = { ...filters, page: 1 };
     setPageCursors({ 1: null });
-    setApplied({ ...next, cursor: null, includeTotal: true });
+    setJumpInput('1');
+    setJumpError('');
+    setApplied({ ...next, cursor: null, includeTotal: true, useOffset: false });
     setFilters(next);
   };
 
   const reset = () => {
     setPageCursors({ 1: null });
+    setJumpInput('1');
+    setJumpError('');
     setFilters(initial);
-    setApplied({ ...initial, cursor: null, includeTotal: true });
+    setApplied({ ...initial, cursor: null, includeTotal: true, useOffset: false });
   };
 
   const changePage = (page) => {
+    if (loading || page < 1) return;
+    const totalPages = Math.max(1, Math.ceil(Number(result.totalCount || 0) / Number(result.pageSize || 30)));
+    if (page > totalPages) return;
     const cursor = pageCursors[page] ?? null;
-    if (page > 1 && !cursor) return;
+    const useOffset = applied.useOffset === true || (page > 1 && !cursor);
+    setJumpInput(String(page));
+    setJumpError('');
     setFilters((prev) => ({ ...prev, page }));
-    setApplied((prev) => ({ ...prev, page, cursor, includeTotal: false }));
+    setApplied((prev) => ({ ...prev, page, cursor: useOffset ? null : cursor, includeTotal: useOffset, useOffset }));
+  };
+
+  const jumpToPage = (event) => {
+    event.preventDefault();
+    const totalPages = Math.max(1, Math.ceil(Number(result.totalCount || 0) / Number(result.pageSize || 30)));
+    const input = jumpInput.trim();
+    const page = Number(input);
+    if (!/^\d+$/.test(input) || !Number.isSafeInteger(page) || page < 1 || page > totalPages) {
+      setJumpError(`1~${totalPages} 사이의 페이지를 입력하세요.`);
+      return;
+    }
+    changePage(page);
   };
 
   return (
@@ -74,6 +98,15 @@ export function TransactionListPage() {
         {!loading && !error && !result.items.length ? <EmptyState /> : null}
         {!loading && !error && result.items.length ? <div className="table-wrap"><table><thead><tr><th>거래일</th><th>유형</th><th>상태</th><th>보낸 회원</th><th>받는 회원</th><th>자산</th><th className="align-right">금액</th><th>설명</th><th>관리자</th></tr></thead><tbody>{result.items.map((tx) => <tr key={tx.id}><td>{formatDateTime(tx.createdAt)}</td><td><StatusBadge value={tx.transactionType} /></td><td><StatusBadge value={tx.status} /></td><td>{tx.sender ? <button className="link-button" onClick={() => navigate(`/members/${tx.sender.userId}`)}>{tx.sender.memberId}<small>{tx.sender.name}</small></button> : '-'}</td><td>{tx.receiver ? <button className="link-button" onClick={() => navigate(`/members/${tx.receiver.userId}`)}>{tx.receiver.memberId}<small>{tx.receiver.name}</small></button> : '-'}</td><td>{tx.assetCode}</td><td className="align-right"><strong>{formatNumber(tx.amount)}</strong></td><td>{tx.description || '-'}</td><td>{tx.adminActor?.memberId || tx.metadata?.admin_actor_member_id || '-'}</td></tr>)}</tbody></table></div> : null}
         <Pagination page={result.page} pageSize={result.pageSize} totalCount={result.totalCount} onChange={changePage} />
+        <form className="transaction-page-jump" onSubmit={jumpToPage}>
+          <label htmlFor="transaction-page-input">페이지 이동</label>
+          <input id="transaction-page-input" type="number" min="1"
+            max={Math.max(1, Math.ceil(Number(result.totalCount || 0) / Number(result.pageSize || 30)))}
+            step="1" value={jumpInput} disabled={loading}
+            onChange={(event) => { setJumpInput(event.target.value); setJumpError(''); }} />
+          <Button type="submit" variant="secondary" size="sm" disabled={loading}>이동</Button>
+          {jumpError ? <span role="alert" className="transaction-page-error">{jumpError}</span> : null}
+        </form>
       </Card>
     </AdminLayout>
   );

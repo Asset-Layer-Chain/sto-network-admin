@@ -117,6 +117,9 @@ td small { display: block; margin-top: 3px; line-height: 1.4; }
 .pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-top: 1px solid var(--border); color: #6b7280; font-size: 13px; }
 .pagination > div { display: flex; align-items: center; gap: 8px; }
 .page-number { min-width: 74px; text-align: center; color: #374151; }
+.transaction-page-jump { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 18px 14px; color: #6b7280; font-size: 13px; }
+.transaction-page-jump input { width: 76px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; color: #374151; }
+.transaction-page-error { color: #dc2626; width: 100%; text-align: right; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 28px; background: rgba(17,24,39,.58); }
 .modal { width: 100%; max-height: calc(100vh - 56px); display: flex; flex-direction: column; background: white; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,.28); overflow: hidden; }
